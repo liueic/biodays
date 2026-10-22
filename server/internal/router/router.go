@@ -59,7 +59,7 @@ func NewWithClock(cfg config.Config, st *store.Store, logger *slog.Logger, now f
 	v1.GET("/tags", storyHandler.Tags)
 	v1.GET("/meta", storyHandler.Meta)
 
-	engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	engine.GET("/swagger/*any", withSwaggerTheme(ginSwagger.WrapHandler(swaggerFiles.Handler)))
 	return engine, nil
 }
 

@@ -317,3 +317,15 @@ func TestSwaggerUI(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "swagger")
 }
+
+func TestSwaggerWin98Theme(t *testing.T) {
+	engine := newTestEngine(t, 60)
+	rec := do(t, engine, http.MethodGet, "/swagger/index.css", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Header().Get("Content-Type"), "text/css")
+	require.Contains(t, rec.Body.String(), "--w98-face")
+
+	// The rest of the Swagger UI keeps working.
+	rec = do(t, engine, http.MethodGet, "/swagger/doc.json", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+}

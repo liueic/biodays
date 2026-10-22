@@ -1,0 +1,502 @@
+/* Windows 98 theme for Swagger UI. Served in place of gin-swagger's index.css. */
+@import url("https://cdn.jsdelivr.net/npm/@vp-tw/cjk-web-fonts-fusion-pixel-font@0.0.1/dist/12px/proportional/zh_hans/Fusion-Pixel-12px-Proportional-Simplified-Chinese.css");
+
+:root {
+  --w98-face: #c0c0c0;
+  --w98-light: #dfdfdf;
+  --w98-white: #fff;
+  --w98-shadow: #808080;
+  --w98-dark: #0a0a0a;
+  --w98-navy: #000080;
+  --w98-font: "Fusion Pixel 12px Proportional Simplified Chinese", "MS Sans Serif", Tahoma,
+    "PingFang SC", "Microsoft YaHei", sans-serif;
+  --w98-mono: "Courier New", ui-monospace, Menlo, Consolas, monospace;
+  --w98-out: inset -1px -1px var(--w98-dark), inset 1px 1px var(--w98-white),
+    inset -2px -2px var(--w98-shadow), inset 2px 2px var(--w98-light);
+  --w98-in: inset -1px -1px var(--w98-white), inset 1px 1px var(--w98-shadow),
+    inset -2px -2px var(--w98-light), inset 2px 2px var(--w98-dark);
+}
+
+html {
+  box-sizing: border-box;
+  background: #008080;
+  overflow-y: scroll;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  margin: 0;
+  padding: 24px 12px 48px;
+  background: #008080;
+  font-family: var(--w98-font);
+  font-size: 12px;
+  -webkit-font-smoothing: none;
+}
+
+/* ---- window frame ------------------------------------------------------ */
+#swagger-ui {
+  position: relative;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 3px;
+  background: var(--w98-face);
+  box-shadow: var(--w98-out);
+}
+
+#swagger-ui::before {
+  content: "biodays API - Swagger UI";
+  display: block;
+  padding: 3px 6px;
+  margin-bottom: 3px;
+  color: #fff;
+  font-weight: bold;
+  background: linear-gradient(90deg, #000080, #1084d0);
+}
+
+#swagger-ui::after {
+  content: "_  \25A1  \00D7";
+  position: absolute;
+  top: 5px;
+  right: 10px;
+  color: #fff;
+  font-weight: bold;
+  letter-spacing: 4px;
+  pointer-events: none;
+}
+
+.swagger-ui {
+  padding: 8px 12px 16px;
+  color: #000;
+  background: var(--w98-face);
+  box-shadow: var(--w98-in);
+  background-clip: padding-box;
+}
+
+.swagger-ui .wrapper {
+  padding: 0 4px;
+  max-width: none;
+}
+
+.swagger-ui .topbar {
+  display: none;
+}
+
+/* ---- typography -------------------------------------------------------- */
+.swagger-ui,
+.swagger-ui * {
+  font-family: var(--w98-font) !important;
+  border-radius: 0 !important;
+}
+
+.swagger-ui,
+.swagger-ui .opblock .opblock-summary-description,
+.swagger-ui .opblock-description-wrapper p,
+.swagger-ui .opblock-external-docs-wrapper p,
+.swagger-ui .opblock-title_normal p,
+.swagger-ui .response-col_description,
+.swagger-ui .response-col_status,
+.swagger-ui table thead tr td,
+.swagger-ui table thead tr th,
+.swagger-ui .parameter__name,
+.swagger-ui .parameter__type,
+.swagger-ui .parameter__in,
+.swagger-ui label,
+.swagger-ui .tab li,
+.swagger-ui .info li,
+.swagger-ui .info p,
+.swagger-ui .info table,
+.swagger-ui .markdown p,
+.swagger-ui .markdown li,
+.swagger-ui .renderedMarkdown p,
+.swagger-ui .model,
+.swagger-ui .model-title,
+.swagger-ui section.models h4,
+.swagger-ui .btn {
+  color: #000;
+  font-size: 12px;
+}
+
+.swagger-ui code,
+.swagger-ui pre,
+.swagger-ui pre *,
+.swagger-ui .opblock-summary-path,
+.swagger-ui .opblock-summary-path__deprecated,
+.swagger-ui textarea,
+.swagger-ui .microlight,
+.swagger-ui .microlight * {
+  font-family: var(--w98-mono) !important;
+  font-size: 12px;
+}
+
+.swagger-ui .info {
+  margin: 12px 0;
+}
+
+.swagger-ui .info .title {
+  color: #000;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.swagger-ui .info .title small {
+  padding: 1px 4px;
+  background: var(--w98-shadow);
+}
+
+.swagger-ui .info a,
+.swagger-ui a {
+  color: #0000ee;
+}
+
+.swagger-ui .info a:visited,
+.swagger-ui a:visited {
+  color: #551a8b;
+}
+
+/* ---- sections ---------------------------------------------------------- */
+.swagger-ui .scheme-container {
+  margin: 0 0 12px;
+  padding: 8px;
+  background: var(--w98-face);
+  box-shadow: var(--w98-out);
+}
+
+.swagger-ui .opblock-tag {
+  color: #000;
+  font-size: 14px;
+  font-weight: bold;
+  border-bottom: 1px solid var(--w98-shadow);
+}
+
+.swagger-ui .opblock-tag:hover {
+  background: var(--w98-navy);
+  color: #fff;
+}
+
+.swagger-ui .opblock-tag small {
+  color: inherit;
+}
+
+.swagger-ui .opblock {
+  margin: 0 0 8px;
+  background: var(--w98-face);
+  border: 1px solid var(--w98-shadow);
+  box-shadow: var(--w98-out);
+}
+
+.swagger-ui .opblock .opblock-summary {
+  border: 0;
+  padding: 4px;
+}
+
+.swagger-ui .opblock .opblock-summary-method {
+  min-width: 60px;
+  padding: 4px 6px;
+  color: #fff;
+  font-size: 12px;
+  background: var(--w98-navy);
+  text-shadow: none;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+  background: #006400;
+}
+
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+  background: #808000;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+  background: #800000;
+}
+
+.swagger-ui .opblock .opblock-section-header {
+  background: var(--w98-face);
+  box-shadow: none;
+  border-bottom: 1px solid var(--w98-shadow);
+}
+
+.swagger-ui .opblock .opblock-section-header h4,
+.swagger-ui .opblock .opblock-section-header label {
+  color: #000;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.swagger-ui .opblock-body {
+  background: var(--w98-face);
+}
+
+/* ---- controls ---------------------------------------------------------- */
+.swagger-ui .btn,
+.swagger-ui .btn.authorize,
+.swagger-ui .btn.execute,
+.swagger-ui .btn.cancel,
+.swagger-ui .try-out__btn,
+.swagger-ui .download-contents,
+.swagger-ui .copy-to-clipboard {
+  padding: 4px 12px;
+  color: #000;
+  background: var(--w98-face);
+  border: 0;
+  box-shadow: var(--w98-out);
+}
+
+.swagger-ui .btn.authorize svg {
+  fill: #000;
+}
+
+.swagger-ui .btn:active,
+.swagger-ui .btn.execute:active,
+.swagger-ui .try-out__btn:active {
+  box-shadow: var(--w98-in);
+}
+
+.swagger-ui .btn:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+
+.swagger-ui .btn.execute {
+  font-weight: bold;
+}
+
+.swagger-ui .btn[disabled] {
+  color: var(--w98-shadow);
+  text-shadow: 1px 1px 0 #fff;
+  opacity: 1;
+}
+
+.swagger-ui input[type="text"],
+.swagger-ui input[type="password"],
+.swagger-ui input[type="search"],
+.swagger-ui input[type="email"],
+.swagger-ui input[type="file"],
+.swagger-ui textarea,
+.swagger-ui select {
+  padding: 4px 6px;
+  color: #000;
+  background: #fff;
+  border: 0;
+  box-shadow: var(--w98-in);
+  outline: none;
+}
+
+.swagger-ui select {
+  padding-right: 24px;
+}
+
+.swagger-ui textarea:focus,
+.swagger-ui input:focus,
+.swagger-ui select:focus {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+
+.swagger-ui table {
+  border-collapse: collapse;
+}
+
+.swagger-ui table thead tr td,
+.swagger-ui table thead tr th {
+  border-bottom: 1px solid var(--w98-shadow);
+  font-weight: bold;
+}
+
+.swagger-ui .responses-inner h4,
+.swagger-ui .responses-inner h5 {
+  color: #000;
+}
+
+.swagger-ui .response-control-media-type--accept-controller select {
+  border: 0;
+}
+
+/* ---- code blocks (Notepad style) --------------------------------------- */
+.swagger-ui .highlight-code,
+.swagger-ui .highlight-code > .microlight,
+.swagger-ui .microlight,
+.swagger-ui .example,
+.swagger-ui pre.microlight,
+.swagger-ui .curl-command pre {
+  color: #000 !important;
+  background: #fff !important;
+}
+
+.swagger-ui .highlight-code > .microlight,
+.swagger-ui pre.microlight {
+  padding: 6px;
+  box-shadow: var(--w98-in);
+}
+
+.swagger-ui .microlight *,
+.swagger-ui .highlight-code pre * {
+  color: #000 !important;
+}
+
+.swagger-ui .copy-to-clipboard {
+  background: var(--w98-face);
+  width: 24px;
+  height: 24px;
+}
+
+/* ---- models ------------------------------------------------------------ */
+.swagger-ui section.models {
+  margin: 16px 0 0;
+  border: 1px solid var(--w98-shadow);
+  background: var(--w98-face);
+  box-shadow: var(--w98-out);
+}
+
+.swagger-ui section.models.is-open h4 {
+  border-bottom: 1px solid var(--w98-shadow);
+}
+
+.swagger-ui section.models .model-container {
+  margin: 0;
+  background: #fff;
+  box-shadow: var(--w98-in);
+}
+
+.swagger-ui .model-box {
+  background: transparent;
+}
+
+.swagger-ui .model .property.primitive,
+.swagger-ui .model-title {
+  color: #000;
+}
+
+/* ---- modal dialogs (Authorize) ----------------------------------------- */
+.swagger-ui .dialog-ux .backdrop-ux {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.swagger-ui .dialog-ux .modal-ux {
+  max-width: 560px;
+  background: var(--w98-face);
+  border: 0;
+  padding: 3px;
+  box-shadow: var(--w98-out);
+}
+
+.swagger-ui .dialog-ux .modal-ux-header {
+  padding: 3px 6px;
+  border: 0;
+  background: linear-gradient(90deg, #000080, #1084d0);
+}
+
+.swagger-ui .dialog-ux .modal-ux-header h3 {
+  color: #fff;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.swagger-ui .dialog-ux .modal-ux-header .close-modal {
+  background: var(--w98-face);
+  box-shadow: var(--w98-out);
+  width: 18px;
+  height: 16px;
+  padding: 0;
+}
+
+.swagger-ui .dialog-ux .modal-ux-content {
+  padding: 12px;
+}
+
+.swagger-ui .dialog-ux .modal-ux-content h4,
+.swagger-ui .dialog-ux .modal-ux-content p {
+  color: #000;
+}
+
+.swagger-ui .loading-container .loading::before {
+  border-color: var(--w98-navy);
+  border-top-color: transparent;
+}
+
+/* ---- scrollbars -------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: #fff;
+  background-image: linear-gradient(45deg, var(--w98-face) 25%, transparent 25%, transparent 75%, var(--w98-face) 75%),
+    linear-gradient(45deg, var(--w98-face) 25%, transparent 25%, transparent 75%, var(--w98-face) 75%);
+  background-size: 2px 2px;
+  background-position: 0 0, 1px 1px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--w98-face);
+  box-shadow: var(--w98-out);
+}
+
+::-webkit-scrollbar-button {
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: var(--w98-face);
+  box-shadow: var(--w98-out);
+}
+
+::selection {
+  color: #fff;
+  background: var(--w98-navy);
+}
+
+/* ---- override swagger's per-method colour themes ----------------------- */
+.swagger-ui .opblock.opblock-get,
+.swagger-ui .opblock.opblock-post,
+.swagger-ui .opblock.opblock-put,
+.swagger-ui .opblock.opblock-delete,
+.swagger-ui .opblock.opblock-patch,
+.swagger-ui .opblock.opblock-head,
+.swagger-ui .opblock.opblock-options {
+  background: var(--w98-face) !important;
+  border: 1px solid var(--w98-shadow) !important;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary,
+.swagger-ui .opblock.opblock-post .opblock-summary,
+.swagger-ui .opblock.opblock-put .opblock-summary,
+.swagger-ui .opblock.opblock-delete .opblock-summary {
+  border: 0 !important;
+}
+
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+  background: var(--w98-navy) !important;
+}
+
+.swagger-ui .opblock-summary-control,
+.swagger-ui .opblock-summary-control:focus {
+  outline: none;
+}
+
+.swagger-ui .opblock-summary-control:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -2px;
+}
+
+.swagger-ui .opblock-control-arrow,
+.swagger-ui .expand-operation,
+.swagger-ui .model-box-control,
+.swagger-ui .models-control {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.swagger-ui .opblock-summary-path,
+.swagger-ui .opblock-summary-description {
+  color: #000 !important;
+}
+
+.swagger-ui svg:not(:root) {
+  fill: #000;
+}
