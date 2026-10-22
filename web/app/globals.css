@@ -1,0 +1,209 @@
+/* Layer order must be declared before any library CSS loads:
+   Tailwind preflight (base) < React95 < Tailwind utilities. */
+@layer theme, base, react95, components, utilities;
+
+@import "tailwindcss";
+@import "@vp-tw/cjk-web-fonts-fusion-pixel-font/dist/12px/proportional/zh_hans/Fusion-Pixel-12px-Proportional-Simplified-Chinese.css";
+
+:root {
+  --desktop: #008080;
+  --font-pixel:
+    "Fusion Pixel 12px Proportional Simplified Chinese", "MS Sans Serif", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --font-reading:
+    "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", ui-serif, serif;
+}
+
+/* Unlayered rules win over every layer above. */
+html {
+  background: var(--desktop);
+  scrollbar-gutter: stable;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100svh;
+  background: var(--desktop);
+  color: #000;
+}
+
+::selection {
+  background: #000080;
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 1px dotted #000;
+  outline-offset: -4px;
+}
+
+/* Win98 gradient title bar on top of React95's flat Win95 header */
+.win98-title:not([data-inactive]) {
+  background: linear-gradient(90deg, #000080, #1084d0);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: 8px;
+  top: 8px;
+  z-index: 50;
+  background: #c3c7cb;
+  padding: 4px 8px;
+}
+
+/* Long-form reading text uses a vector serif for legibility */
+.reading {
+  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-reading);
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.reading p {
+  margin-bottom: 1em;
+}
+
+.menu-item {
+  padding: 2px 8px;
+  color: #000;
+  text-decoration: none;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible,
+.menu-item[aria-current="page"] {
+  background: #000080;
+  color: #fff;
+}
+
+fieldset {
+  border: 1px solid #808080;
+  box-shadow: 1px 1px 0 #fff;
+  padding: 8px 12px 10px;
+}
+
+fieldset > legend {
+  padding: 0 4px;
+}
+
+/* Title bar acts as the drag handle on desktop */
+@media (min-width: 768px) {
+  .window-drag-handle {
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+  }
+}
+
+/* Pointer affordance for every interactive control (Tailwind preflight strips the defaults) */
+button:not(:disabled),
+select,
+summary,
+[role="button"],
+[role="treeitem"] {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Classic hyperlink: navy + underline, inverted on hover/focus */
+.text-link {
+  color: #000080;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.text-link:hover,
+.text-link:focus-visible {
+  background: #000080;
+  color: #fff;
+  outline-color: #fff;
+}
+
+/* Clickable tag chip -> filtered archive */
+.tag-link {
+  display: inline-block;
+  padding: 1px 8px;
+  color: #000;
+  text-decoration: none;
+}
+
+.tag-link:hover,
+.tag-link:focus-visible {
+  background: #000080;
+  color: #fff;
+  outline-color: #fff;
+}
+
+/* Win95 desktop icons (homepage) */
+.desktop-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  color: #fff;
+  text-align: center;
+  cursor: pointer;
+}
+
+.desktop-icon-img {
+  display: inline-flex;
+  padding: 2px;
+}
+
+.desktop-icon-label {
+  padding: 1px 3px;
+  line-height: 1.3;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.desktop-icon[data-selected] .desktop-icon-img {
+  outline: 1px dotted #fff;
+}
+
+.desktop-icon[data-selected] .desktop-icon-label,
+.desktop-icon:focus-visible .desktop-icon-label {
+  background: #000080;
+  outline: 1px dotted #fff;
+  text-shadow: none;
+}
+
+.desktop-icon:disabled .desktop-icon-label {
+  color: #d4d0c8;
+}
+
+/* Rows inside the recent-archive window */
+.recent-story-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  color: #000;
+  text-decoration: none;
+}
+
+.recent-story-link:hover,
+.recent-story-link:focus-visible {
+  background: #000080;
+  color: #fff;
+}

@@ -1,0 +1,373 @@
+basePath: /
+definitions:
+  handler.ErrorBody:
+    properties:
+      code:
+        example: STORY_NOT_FOUND
+        type: string
+      message:
+        example: story Q2-99 not found
+        type: string
+    type: object
+  handler.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/handler.ErrorBody'
+    type: object
+  handler.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  handler.ListMeta:
+    properties:
+      page:
+        example: 1
+        type: integer
+      page_size:
+        example: 20
+        type: integer
+      total:
+        example: 104
+        type: integer
+    type: object
+  handler.MetaResponse:
+    properties:
+      data:
+        $ref: '#/definitions/model.Meta'
+    type: object
+  handler.StoryListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/model.StoryDTO'
+        type: array
+      meta:
+        $ref: '#/definitions/handler.ListMeta'
+    type: object
+  handler.TagsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/model.TagCount'
+        type: array
+    type: object
+  handler.TodayMeta:
+    properties:
+      is_fallback:
+        example: false
+        type: boolean
+    type: object
+  handler.TodayResponse:
+    properties:
+      data:
+        $ref: '#/definitions/model.StoryDTO'
+      meta:
+        $ref: '#/definitions/handler.TodayMeta'
+    type: object
+  model.Meta:
+    properties:
+      coverage:
+        example: 1-3月 / 10-12月
+        type: string
+      quarters:
+        example:
+        - Q1
+        - Q4
+        items:
+          type: string
+        type: array
+      total:
+        example: 104
+        type: integer
+    type: object
+  model.Source:
+    properties:
+      citation:
+        type: string
+      type:
+        type: string
+      url:
+        type: string
+    type: object
+  model.StoryDTO:
+    properties:
+      content:
+        type: string
+      day:
+        example: 5
+        type: integer
+      geek_quote:
+        type: string
+      id:
+        example: Q1-01
+        type: string
+      lab_item:
+        type: string
+      month:
+        example: 1
+        type: integer
+      source:
+        $ref: '#/definitions/model.Source'
+      summary:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+      year:
+        example: 1961
+        type: integer
+    type: object
+  model.TagCount:
+    properties:
+      count:
+        example: 8
+        type: integer
+      name:
+        example: 仪器极客
+        type: string
+    type: object
+info:
+  contact: {}
+  description: 实验室科学史上的今天 · 公开 REST API
+  title: biodays API
+  version: "1.0"
+paths:
+  /api/v1/meta:
+    get:
+      description: 返回故事总数、覆盖季度与月份范围。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.MetaResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 数据集概况
+      tags:
+      - meta
+  /api/v1/stories:
+    get:
+      description: 支持按月/日、标签、关键词筛选，固定按 month, day, year 排序。
+      parameters:
+      - description: 月份 1-12
+        in: query
+        name: month
+        type: integer
+      - description: 日期 1-31，需与 month 同时使用
+        in: query
+        name: day
+        type: integer
+      - description: 标签精确匹配
+        in: query
+        name: tag
+        type: string
+      - description: 关键词，匹配 title/summary/lab_item
+        in: query
+        name: q
+        type: string
+      - description: 页码，默认 1
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量，默认 20，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.StoryListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 故事列表
+      tags:
+      - stories
+  /api/v1/stories/{id}:
+    get:
+      description: 按业务 id 返回单条故事。
+      parameters:
+      - description: 故事 id，例如 Q1-01
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.StoryDTO'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 故事详情
+      tags:
+      - stories
+  /api/v1/stories/random:
+    get:
+      description: 随机返回一条故事，可通过 exclude 排除当前正在展示的 id。
+      parameters:
+      - description: 逗号分隔的 id 列表，最多 100 个
+        in: query
+        name: exclude
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.StoryDTO'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 随机故事
+      tags:
+      - stories
+  /api/v1/tags:
+    get:
+      description: 返回全部标签及对应故事数量，按数量倒序。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TagsResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 标签列表
+      tags:
+      - meta
+  /api/v1/today:
+    get:
+      description: 按指定时区返回"今天"对应的故事；当日无数据时按 fallback 策略返回随机一篇并标记 is_fallback。
+      parameters:
+      - default: "+08:00"
+        description: 时区偏移，例如 +08:00
+        in: query
+        name: tz
+        type: string
+      - default: random
+        description: random 或 none
+        enum:
+        - random
+        - none
+        in: query
+        name: fallback
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.TodayResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+      summary: 获取今日故事
+      tags:
+      - stories
+  /healthz:
+    get:
+      description: 返回服务存活状态，不参与限流。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+      summary: 健康检查
+      tags:
+      - system
+  /readyz:
+    get:
+      description: 检查数据库连通性；失败时返回 503，且不参与限流。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+      summary: 就绪检查
+      tags:
+      - system
+schemes:
+- http
+- https
+swagger: "2.0"

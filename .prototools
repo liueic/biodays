@@ -1,0 +1,4 @@
+# Toolchain pins for the biodays monorepo.
+# Install everything with `proto install` (or `proto use`) from the repo root.
+bun = "1.4.4"
+go = "1.27.3"

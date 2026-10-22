@@ -1,0 +1,6 @@
+biodays.db
+biodays.db-shm
+biodays.db-wal
+bin/
+*.log
+.git

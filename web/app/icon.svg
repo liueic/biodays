@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img">
+  <title>biodays</title>
+  <rect width="64" height="64" rx="14" fill="#1f4a3d"/>
+  <path d="M26 14h12M28 14v14L18 46a5 5 0 0 0 4.4 7.3h19.2A5 5 0 0 0 46 46L36 28V14" fill="none" stroke="#f6f1e6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M23 40h18" stroke="#e0a355" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="30" cy="46" r="2" fill="#e0a355"/>
+</svg>
