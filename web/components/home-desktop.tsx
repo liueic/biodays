@@ -55,7 +55,7 @@ export function HomeDesktop({ today, recent, stamp }: HomeDesktopProps) {
         <RecentWindow
           stories={recent}
           onClose={() => setRecentOpen(false)}
-          className="relative z-10 mx-auto mt-4 w-full max-w-[640px] lg:mx-0 lg:mt-0 lg:mr-4 lg:ml-auto lg:w-[340px] lg:-translate-y-16"
+          className="relative z-10 mx-auto mt-4 w-full max-w-[640px] lg:mx-0 lg:mr-4 lg:ml-auto lg:w-[340px] lg:-mt-16"
         />
       )}
     </main>

@@ -154,6 +154,7 @@ button:disabled {
 
 /* Win95 desktop icons (homepage) */
 .desktop-icon {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -206,4 +207,12 @@ button:disabled {
 .recent-story-link:focus-visible {
   background: #000080;
   color: #fff;
+}
+
+/* Desktop icons can be dragged around on wide screens */
+@media (min-width: 768px) {
+  .desktop-icon {
+    touch-action: none;
+    user-select: none;
+  }
 }

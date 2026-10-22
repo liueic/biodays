@@ -4,6 +4,7 @@ import { Button, Frame, TitleBar } from "@react95/core";
 import { FileText, Folder } from "@react95/icons";
 import Link from "next/link";
 
+import { useDesktopDrag } from "@/components/win/use-desktop-drag";
 import type { Story } from "@/lib/api";
 import { formatMonthDay } from "@/lib/date";
 
@@ -15,8 +16,15 @@ type RecentWindowProps = {
 
 /** Small desktop window previewing the latest archived stories. */
 export function RecentWindow({ stories, onClose, className }: RecentWindowProps) {
+  const { ref } = useDesktopDrag<HTMLDivElement>({
+    id: "recent-window",
+    handle: ".window-drag-handle",
+    cancel: "button, a",
+  });
+
   return (
     <Frame
+      ref={ref}
       as="section"
       aria-label="最近归档"
       bgColor="$material"
@@ -27,6 +35,7 @@ export function RecentWindow({ stories, onClose, className }: RecentWindowProps)
       <TitleBar
         active
         title="最近归档"
+        className="win98-title window-drag-handle"
         icon={<Folder variant="32x32_4" width={16} height={16} aria-hidden />}
       >
         <TitleBar.OptionsBox>

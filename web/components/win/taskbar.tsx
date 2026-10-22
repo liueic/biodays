@@ -1,7 +1,7 @@
 "use client";
 
 import { List, TaskBar } from "@react95/core";
-import { FileFind, FileText, Folder, HelpBook } from "@react95/icons";
+import { Computer, FileFind, FileText, Folder, HelpBook } from "@react95/icons";
 import { useRouter } from "next/navigation";
 
 import { DOCS_URL } from "@/lib/site";
@@ -28,6 +28,9 @@ export function DesktopTaskbar() {
             onClick={() => window.open(DOCS_URL, "_blank", "noopener")}
           >
             API 文档
+          </List.Item>
+          <List.Item icon={<Computer variant="32x32_4" />} onClick={() => window.location.reload()}>
+            重置桌面布局
           </List.Item>
         </List>
       }

@@ -1,27 +1,18 @@
 "use client";
 
-import { useDraggable } from "@neodrag/react";
 import { Button, Frame, TitleBar } from "@react95/core";
 import { Globe } from "@react95/icons";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  type ReactElement,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import type { ReactElement, ReactNode } from "react";
+
+import { useDesktopDrag } from "@/components/win/use-desktop-drag";
 
 const MENU = [
   { href: "/", label: "今日", key: "T" },
   { href: "/archive", label: "归档", key: "A" },
   { href: "/about", label: "关于", key: "B" },
 ];
-
-// Remember where the user dropped the window so it stays put across page navigations.
-let lastPosition = { x: 0, y: 0 };
 
 type WindowProps = {
   title: string;
@@ -34,27 +25,10 @@ type WindowProps = {
 export function Window({ title, icon, status = [], children }: WindowProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const windowRef = useRef<HTMLDivElement>(null) as RefObject<HTMLDivElement>;
-  const [canDrag, setCanDrag] = useState(false);
-
-  // Dragging is desktop-only; on narrow screens the window stays maximized.
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 768px)");
-    const update = () => setCanDrag(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
-  useDraggable(windowRef, {
+  const { ref: windowRef } = useDesktopDrag<HTMLDivElement>({
+    id: "main-window",
     handle: ".window-drag-handle",
     cancel: "button",
-    bounds: "body",
-    disabled: !canDrag,
-    defaultPosition: lastPosition,
-    onDragEnd: ({ offsetX, offsetY }) => {
-      lastPosition = { x: offsetX, y: offsetY };
-    },
   });
 
   return (
@@ -64,7 +38,7 @@ export function Window({ title, icon, status = [], children }: WindowProps) {
       bgColor="$material"
       boxShadow="$out"
       padding="$2"
-      className="mx-auto w-full max-w-[880px]"
+      className="relative mx-auto w-full max-w-[880px]"
     >
       <TitleBar active title={title} icon={icon} className="win98-title window-drag-handle">
         <TitleBar.OptionsBox>

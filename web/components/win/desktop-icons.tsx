@@ -4,6 +4,7 @@ import { FileFind, FileText, Folder, HelpBook, Star } from "@react95/icons";
 import { useRouter } from "next/navigation";
 import { type ReactElement, useState } from "react";
 
+import { useDesktopDrag } from "@/components/win/use-desktop-drag";
 import { getRandomStory } from "@/lib/api";
 import { DOCS_URL } from "@/lib/site";
 
@@ -92,26 +93,55 @@ export function DesktopIcons({ archiveOpen, onReopenArchive, className }: Deskto
   return (
     <nav aria-label="桌面图标" className={className}>
       {icons.map((item) => (
-        <button
+        <DesktopIcon
           key={item.id}
-          type="button"
-          className="desktop-icon w-16 lg:w-[76px]"
-          data-selected={selected === item.id || undefined}
-          disabled={item.disabled}
-          title={`${item.hint}（双击打开）`}
-          onClick={() => {
-            if (selected === item.id) {
-              setSelected(null);
-              item.onOpen();
-            } else {
-              setSelected(item.id);
-            }
+          item={item}
+          selected={selected === item.id}
+          onSelect={() => setSelected(item.id)}
+          onOpen={() => {
+            setSelected(null);
+            item.onOpen();
           }}
-        >
-          <span className="desktop-icon-img">{item.icon}</span>
-          <span className="desktop-icon-label">{item.label}</span>
-        </button>
+        />
       ))}
     </nav>
+  );
+}
+
+/** One draggable icon. Icons snap to an 8px grid and stay below every window. */
+function DesktopIcon({
+  item,
+  selected,
+  onSelect,
+  onOpen,
+}: {
+  item: IconDef;
+  selected: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
+}) {
+  const { ref, wasDragged } = useDesktopDrag<HTMLButtonElement>({
+    id: `icon-${item.id}`,
+    grid: [8, 8],
+    raise: false,
+  });
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="desktop-icon w-16 lg:w-[76px]"
+      data-selected={selected || undefined}
+      disabled={item.disabled}
+      title={`${item.hint}（双击打开，可拖动）`}
+      onClick={() => {
+        if (wasDragged()) return;
+        if (selected) onOpen();
+        else onSelect();
+      }}
+    >
+      <span className="desktop-icon-img">{item.icon}</span>
+      <span className="desktop-icon-label">{item.label}</span>
+    </button>
   );
 }
