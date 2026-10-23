@@ -5,6 +5,10 @@
 
 const { spawn } = require("node:child_process");
 
+// gin 读不到 GIN_MODE 时会退回 debug 模式（打印 [GIN-debug] 警告并开启调试输出）。
+// 镜像里已固定为 release，这里兜底一次，避免运行时被清空的环境变量带回 debug。
+if (!process.env.GIN_MODE) process.env.GIN_MODE = "release";
+
 const apiUrl = process.env.BIODAYS_API_URL || "http://127.0.0.1:8080";
 const serverBin = process.env.BIODAYS_SERVER_BIN || "/usr/local/bin/biodays";
 const nextEntry = process.env.BIODAYS_NEXT_ENTRY || "/app/server.js";
