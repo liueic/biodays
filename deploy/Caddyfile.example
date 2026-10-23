@@ -1,0 +1,5 @@
+# Caddy runs on the host; Compose binds the application to loopback by default.
+biodays.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8080
+}

@@ -52,6 +52,7 @@ func TestRunImportsValidEntriesAndSkipsInvalid(t *testing.T) {
 	require.Equal(t, 3, report.Files)
 	require.Equal(t, 3, report.Imported)
 	require.Equal(t, 2, report.Skipped)
+	require.Equal(t, 1, report.FailedFiles)
 
 	total, _, err := st.Stats(context.Background())
 	require.NoError(t, err)

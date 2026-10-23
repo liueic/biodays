@@ -15,9 +15,10 @@ import (
 )
 
 type Report struct {
-	Files    int
-	Imported int
-	Skipped  int
+	Files       int
+	Imported    int
+	Skipped     int
+	FailedFiles int
 }
 
 type inputSource struct {
@@ -57,11 +58,13 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {
+			report.FailedFiles++
 			logger.Warn("seed: cannot read file", "file", file, "error", err)
 			continue
 		}
 		var entries []inputStory
 		if err := json.Unmarshal(raw, &entries); err != nil {
+			report.FailedFiles++
 			logger.Warn("seed: cannot parse file", "file", file, "error", err)
 			continue
 		}

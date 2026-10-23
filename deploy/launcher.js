@@ -1,5 +1,5 @@
-// Container supervisor: starts the Go API (which migrates and seeds the
-// database itself on boot), waits for it to become ready, then starts the
+// Container supervisor: starts the Go API (which validates the bundled
+// database on boot), waits for it to become ready, then starts the
 // Next.js standalone server. Both run as child processes; signals are
 // forwarded symmetrically, and if either process dies the container exits.
 
@@ -64,8 +64,7 @@ async function waitForApi() {
 }
 
 async function main() {
-  // `serve` runs schema migration and the idempotent seed before listening,
-  // so no separate seed step is needed here.
+  // `serve` migrates and validates the database before listening.
   start("api", serverBin, ["serve"]);
   await waitForApi();
   if (shuttingDown) return;

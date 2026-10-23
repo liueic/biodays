@@ -18,6 +18,8 @@ func RequestLog(logger *slog.Logger) gin.HandlerFunc {
 			"status", c.Writer.Status(),
 			"latency_ms", float64(time.Since(started).Microseconds())/1000.0,
 			"client_ip", c.ClientIP(),
+			"remote_addr", c.Request.RemoteAddr,
+			"forwarded_for", c.GetHeader("X-Forwarded-For"),
 		)
 	}
 }

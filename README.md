@@ -2,10 +2,10 @@
 
 > 实验室科学史上的今天。每天一张卡片，一则发生在该月该日的实验室故事，外加一句极客金句。
 
-biodays 是一个前后端分离的双工程仓库：Go 单体后端提供版本化 REST API，Next.js 前端以**复古 Windows 98 桌面**风格呈现沉浸式阅读与档案浏览体验。当前数据集 104 篇（Q1 + Q4），Q2/Q3 尚在整理；数据缺口日期由 `/api/v1/today` 的随机兜底策略平滑处理。
+biodays 是一个前后端分离的双工程仓库：Go 单体后端提供版本化 REST API，Next.js 前端以**复古 Windows 98 桌面**风格呈现沉浸式阅读与档案浏览体验。当前数据集 408 篇（季度故事 208 篇 + 生物学主题故事 200 篇），原始 JSON 位于仓库 `data/`；数据缺口日期由 `/api/v1/today` 的随机兜底策略平滑处理。
 
 ```
-stories_q*.json ──▶ biodays seed ──▶ SQLite (biodays.db)
+data/stories_*.json ──▶ 构建时 biodays seed --strict ──▶ 镜像内 SQLite
                                       │
                                       ▼
                        Go + Gin  /api/v1  ──▶  Next.js App Router
@@ -34,7 +34,8 @@ biodays/
 ├── .cnb.yml               CNB 流水线：检查、测试与容器镜像构建
 ├── .prototools            固定 Go (1.27.3) / Bun (1.4.4) 工具链版本
 ├── Dockerfile             单容器镜像（Next.js + Go API）
-├── docker-compose.yml     app + 可选 seed，只暴露一个端口
+├── docker-compose.yml     单个 app 服务，无需数据挂载
+├── data/                  Git 管理的季度与主题故事 JSON（408 篇）
 ├── deploy/launcher.js     容器内进程 supervisor：启动 Go API，就绪后启动 Next
 ├── server/                Go module（module biodays/server）
 │   ├── cmd/biodays/       单二进制入口：serve（默认）/ seed / migrate 子命令
@@ -69,13 +70,13 @@ proto use
 
 ### 1. 后端：导入数据并启动
 
-数据源目录通过环境变量传入，仓库自身不冗余复制原始数据：
+本地开发直接使用仓库中的 JSON；生产容器已包含构建时生成的 SQLite：
 
 ```bash
 cd server
-export BIODAYS_DATA_DIR=/path/to/data   # 包含 stories_q1.json、stories_q4.json 等的目录
+export BIODAYS_DATA_DIR=../data
 
-go run ./cmd/biodays seed    # 输出 imported=104 skipped=0 files=2
+go run ./cmd/biodays seed --strict  # imported=408 skipped=0 files=8 failed_files=0
 go run ./cmd/biodays serve   # 启动于 http://localhost:8080（或省略 serve）
 ```
 
@@ -96,7 +97,7 @@ bun install
 bun run dev                # 启动于 http://localhost:3000
 ```
 
-开发模式下 Next.js 通过 `next.config.ts` 的 `rewrites` 将 `/api/*` 请求透明代理至 `BIODAYS_API_URL`（默认 `http://localhost:8080`），浏览器同源无跨域困扰。生产环境则由后端 CORS 白名单放行正式域名。
+Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/readyz` 原路径代理到 `BIODAYS_API_URL`（默认 `http://127.0.0.1:8080`），开发与 standalone 生产环境均生效。代理目标在运行时读取，镜像无需为不同 API 地址重新构建；浏览器请求保持同源。
 
 ### 3. 环境变量
 
@@ -119,7 +120,7 @@ bun run dev                # 启动于 http://localhost:3000
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `BIODAYS_API_URL` | `http://localhost:8080` | SSR / ISR 数据抓取与 `/api` 代理目标 |
+| `BIODAYS_API_URL` | `http://127.0.0.1:8080` | SSR / ISR 数据抓取与 `/api` 代理目标 |
 | `BIODAYS_SITE_URL` | `http://localhost:3000` | canonical / OpenGraph / sitemap 站点根地址 |
 | `NEXT_PUBLIC_BIODAYS_DOCS_URL` | `/swagger/index.html` | 前端关于页与任务栏直达的 API 文档链接 |
 
@@ -208,89 +209,67 @@ BIODAYS_DB_PATH=./biodays.db ./biodays serve
 BIODAYS_DATA_DIR=/path/to/data BIODAYS_DB_PATH=./biodays.db ./biodays serve
 ```
 
-#### 单容器镜像（前端 + Go API）
+#### 单容器镜像（前端 + Go API + SQLite）
 
-根目录 `Dockerfile` 会把 Next.js 与 Go API 打进同一个镜像：Next 作为唯一入口监听 3000，内部启动 Go API（`127.0.0.1:8080`），对外只需暴露一个端口。
+根目录 `Dockerfile` 使用 `gcr.io/distroless/nodejs24-debian13:nonroot`。Next.js 监听 3000，Go API 在容器内部监听 8080。`data/stories_*.json` 由 Git 管理，在构建阶段通过 `biodays seed --strict` 导入 SQLite；空数据、无效 JSON、重复 ID 或被跳过的记录均令构建失败。运行镜像只携带生成的数据库，不需要 JSON 目录或数据库卷。
 
 ```bash
-docker build -t biodays .
-docker volume create biodays-data
-
-docker run -d --name biodays -p 8080:3000 \
-  -v biodays-data:/data \
-  -v /path/to/data:/seed:ro \
-  -e BIODAYS_DATA_DIR=/seed \
-  -e BIODAYS_SITE_URL=http://localhost:8080 \
+docker build --platform linux/amd64 -t biodays .
+docker run -d --name biodays -p 127.0.0.1:8080:3000 \
+  -e BIODAYS_SITE_URL=https://biodays.example.com \
   biodays
 ```
 
-容器启动时 Go API 会先完成 schema 迁移，并在检测到 `BIODAYS_DATA_DIR` 中的 `stories_*.json` 后执行一次幂等 seed（按 id upsert），随后才开始监听；就绪后 launcher 再启动 Next。打开 `http://localhost:8080` 即可使用。同一个端口下：
+打开同一个入口即可访问：`/`（前端）、`/api/v1/*`（API）、`/swagger/index.html`（文档）、`/readyz`（健康检查）。启动会校验数据库含有故事；空库会明确报错并退出，避免健康检查通过但今日接口持续 404。
 
-- `/`：前端
-- `/api/v1/*`：API
-- `/swagger/index.html`：Swagger
-- `/readyz`：健康检查
+更新故事时修改 `data/stories_*.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 只有读取端点，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
 
-#### CNB 自动构建（CNB Docker 制品库）
+#### Distroless 选型
 
-推送 `main` 或推送 `v*.*.*` 标签时，`.cnb.yml` 会并行跑两条检查流水线，全部通过后再构建 `linux/amd64` 镜像推送到 CNB Docker 制品库：
+| 镜像 | 适用性 |
+| --- | --- |
+| `nodejs24-debian13:nonroot` | 默认选择：包含 Node 24、glibc 和 C/C++ 运行库，可运行 Next standalone 与 CGO SQLite 后端 |
+| `static-debian13` | 不含 Node，也不能直接运行当前动态链接的 CGO 二进制 |
+| `base-debian13` / `cc-debian13` | 可用于单独的 Go 后端，组合容器仍缺 Node |
 
-- `go`：`go vet ./...`、`go test -race -count=1 ./...`、`govulncheck`
-- `web`：`bun install --frozen-lockfile`、`typecheck`、`lint`
+Go 构建阶段使用 `golang:1.27.3-trixie`，与运行阶段的 Debian 13/glibc 对齐；不再复制 Alpine/musl 二进制。Next 构建使用 glibc 版 Bun 镜像。运行用户为 UID/GID `65532:65532`，数据库与 Next 缓存目录均归该用户所有。健康检查直接使用 Node，无 shell、`wget` 或 `curl` 依赖。
 
-镜像地址为 `docker.cnb.cool/ciallo.cv/biodays`（即 `${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}`）：
+依据：[Distroless 官方镜像列表](https://github.com/GoogleContainerTools/distroless#what-images-are-available)、[Node 镜像内容](https://github.com/GoogleContainerTools/distroless/blob/main/nodejs/README.md)。
 
-- `latest`：默认分支最新构建
-- `main` / `sha-<短哈希>`：分支构建
-- `1.2.3` / `1.2`：Git tag（如 `v1.2.3`）
-- PR 只构建校验，不推送
+#### CNB 自动构建与 Docker Compose
 
-拉取运行（制品库私有化时需先 `docker login docker.cnb.cool -u cnb -p <访问令牌>`，公开则直接拉）：
-
-```bash
-docker pull docker.cnb.cool/ciallo.cv/biodays:latest
-docker run -d --name biodays -p 8080:3000 \
-  -v biodays-data:/data \
-  -v /path/to/data:/seed:ro \
-  -e BIODAYS_DATA_DIR=/seed \
-  -e BIODAYS_SITE_URL=http://localhost:8080 \
-  docker.cnb.cool/ciallo.cv/biodays:latest
-```
-
-#### Docker Compose（推荐）
-
-仓库根目录的 `docker-compose.yml` 只有一个 `app` 服务，启动时自动导入数据：
+推送 `main` 或 `v*.*.*` 标签时，`.cnb.yml` 运行 Go 检查（含真实 JSON 数据导入测试）和前端检查，然后构建 `linux/amd64` 镜像并发布到 `docker.cnb.cool/ciallo.cv/biodays`。PR 只检查构建，不推送。
 
 ```bash
 cp .env.example .env
-# 编辑 .env：设置 BIODAYS_SITE_URL 与 BIODAYS_DATA_DIR
-# 制品库私有化时需要先登录：docker login docker.cnb.cool -u cnb -p <访问令牌>
-
+# 设置 BIODAYS_SITE_URL；生产环境可将 BIODAYS_IMAGE 固定到版本或 digest。
 docker compose pull
 docker compose up -d
 docker compose logs -f app
-curl http://127.0.0.1:8080/readyz
+curl http://127.0.0.1:8080/api/v1/meta  # data.total 应为 408
+curl http://127.0.0.1:8080/api/v1/today
 ```
 
-compose 内置了 `pull_policy`（默认 `missing`）与容器 `init`，健康检查直接复用镜像自带的 `/readyz`；`BIODAYS_DB_PATH` 在 compose 里固定为 `/data/biodays.db`，与命名卷对齐。
+Compose 只有一个 `app` 服务，没有数据卷或种子目录挂载。默认监听宿主机 `127.0.0.1:8080`，由 Caddy 对外提供 HTTPS；跨机器访问时可调整 `BIODAYS_BIND_IP`。已有部署替换 compose 后运行 `docker compose up -d` 即可移除旧挂载，旧命名卷不会被删除。
 
-打开 `http://<服务器>:8080/` 即可使用，不需要单独部署前端，也不需要手动执行 seed。数据更新后重启容器即可重新导入：
+#### Caddy 与客户端 IP
 
-```bash
-docker compose restart app
+宿主机上的 Caddy 可使用 [deploy/Caddyfile.example](deploy/Caddyfile.example)：
+
+```caddyfile
+biodays.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8080
+}
 ```
 
-部署要点：
+Caddy 默认生成 `X-Forwarded-For`、`X-Forwarded-Proto` 和 `X-Forwarded-Host`，Next 保留这些转发信息，Gin 从可信代理请求中自动解析 `X-Forwarded-For` / `X-Real-IP`，日志与限流使用同一个客户端 IP。组合容器的 Go 直接上游为 Next，默认信任 `127.0.0.1,::1`；独立部署 Go 时，将 Caddy 的实际 IP/CIDR 加入 `BIODAYS_TRUSTED_PROXIES`。无需把所有来源设为可信。Caddy 自身处于 CDN 后面时，在 Caddy 配置可信 CDN 网段。
 
-- 对外只有一个端口；`BIODAYS_HTTP_PORT` 可以改成 80 等。
-- `BIODAYS_SITE_URL` 应设置为用户实际访问的地址，用于 canonical、sitemap 和 robots。
-- `BIODAYS_DATA_DIR` 必须指向包含 `stories_*.json` 的目录（建议绝对路径），并以只读方式挂载；该目录需对容器内 `biodays`（非 root）可读，否则启动时 seed 会跳过。
-- SQLite 数据保存在命名卷 `biodays-data`，会自动创建；`/data` 与 `/seed` 是两个独立挂载点。
-- 生产环境建议把 `BIODAYS_IMAGE` 固定到版本 tag 或 digest，而不是长期使用 `latest`。
-- 如果需要对公网提供 HTTPS，在 8080（或 80）前加 Caddy/Nginx/Cloudflare 即可；镜像内部的两个进程无需再拆开。
-- `server/Dockerfile` 仅保留给“前后端分开部署”的场景，默认部署不需要它。
+SSR/ISR 在服务器内发起的数据请求没有浏览器转发头时，`client_ip=127.0.0.1` 属于正常现象。日志额外包含 `remote_addr` 与 `forwarded_for`，便于与经过 Caddy 的浏览器 API 请求区分。依据：[Caddy 转发头默认行为](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#defaults)。
 
-> 为什么不在镜像 build 时导入？故事 JSON 在仓库外，CI 构建上下文拿不到；把 SQLite 写进镜像会变成可变数据层，而且首次挂载 `/data` 卷时镜像内数据库会被卷遮住。启动时 seed 是幂等的，既保留外部数据源，也能在重启时自动更新。
+#### 404 排查
+
+后端日志已经出现 `/api/v1/today`，说明请求到达 Go。默认随机兜底仍返回 `STORY_NOT_FOUND` 时，检查 `/api/v1/meta` 的 `data.total` 是否为 0，以及启动日志的 `story data ready`。如果只有 `fallback=none` 返回 404，可能只是当天未收录。Next 返回 HTML 404、Go 返回 JSON 业务错误，两者需要分别判断。
 
 ### 前端（可选拆分部署）
 
@@ -314,13 +293,13 @@ bun run start
 
 1. **同日多篇规则与缺口兜底**：
    - 当服务端判定某月某日存在多条故事记录时，按 `year ASC` 选取年份最早的一条，确保同一日期的“今日卡片”展示绝对稳定；
-   - 当前 Q2/Q3 暂缺，未覆盖日期由 `/api/v1/today` 随机推荐一篇，并在元数据中标记 `meta.is_fallback = true`，前端状态栏会向用户清晰呈现提示；
+   - 数据未覆盖的日期由 `/api/v1/today` 随机推荐一篇，并在元数据中标记 `meta.is_fallback = true`，前端状态栏会向用户清晰呈现提示；
 2. **幂等 Seed 机制**：
    - `biodays seed` 会扫描指定目录下的全部 `stories_*.json` 文件，根据主键 `id` 幂等 upsert；
-   - `biodays serve` 启动时自动执行 schema 迁移，并在 `BIODAYS_DATA_DIR` 指向的目录存在 `stories_*.json` 时自动执行同一套幂等 seed，容器无需单独的初始化步骤；
+   - 生产镜像在构建时生成 SQLite，启动时只迁移并校验已有数据；本地开发仍可通过 `BIODAYS_DATA_DIR` 自动导入。
    - 自动建立和更新故事与标签的多对多关联，并主动清理已无任何故事引用的孤儿标签；遇到单条损坏数据记录 warning 日志并跳过，确保整体导入流程稳健不中断；
 3. **单容器运行期渲染**：
-   - 镜像构建不依赖故事数据；`/`、`/archive`、`/story/[id]` 按请求从同容器内的 Go API 读取 SQLite；
+   - 镜像构建从仓库 JSON 生成数据库；`/`、`/archive`、`/story/[id]` 按请求从同容器内的 Go API 读取 SQLite；
    - Next 反向代理 `/api`、`/swagger`、`/healthz`、`/readyz`，浏览器只访问一个端口；`sitemap.xml`/`robots.txt` 也按运行期 `BIODAYS_SITE_URL` 生成；
 4. **CGO SQLite 驱动选型**：
    - 采用 GORM 官方 `gorm.io/driver/sqlite`（底层 `mattn/go-sqlite3`，内置 SQLite amalgamation），取代此前因本机 CGO 工具链故障而使用的纯 Go `glebarez/sqlite`；

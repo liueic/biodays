@@ -168,6 +168,20 @@ func TestToday(t *testing.T) {
 	}
 }
 
+func TestTodayOnEmptyDatabaseIsBusiness404(t *testing.T) {
+	st, err := store.Open("file:" + t.Name() + "?mode=memory&cache=shared")
+	require.NoError(t, err)
+	defer st.Close()
+	engine, err := router.New(config.Config{
+		CORSOrigins: []string{"http://localhost:3000"}, RateLimit: 60,
+	}, st, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, err)
+	rec := do(t, engine, http.MethodGet, "/api/v1/today", nil)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Equal(t, "STORY_NOT_FOUND", decode[errorEnvelope](t, rec).Error.Code)
+	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+}
+
 func TestList(t *testing.T) {
 	engine := newTestEngine(t, 60)
 
@@ -269,6 +283,27 @@ func TestRateLimitAndHealthExemption(t *testing.T) {
 }
 
 func TestClientIPBehindProxy(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		proxies []string
+		remote  string
+		headers map[string]string
+		want    string
+	}{
+		{"Caddy through Next", []string{"127.0.0.1", "::1"}, "127.0.0.1:1234", map[string]string{"X-Forwarded-For": "198.51.100.7"}, "198.51.100.7"},
+		{"IPv6 client", []string{"::1"}, "[::1]:1234", map[string]string{"X-Forwarded-For": "2001:db8::7"}, "2001:db8::7"},
+		{"real IP fallback", []string{"127.0.0.1"}, "127.0.0.1:1234", map[string]string{"X-Real-IP": "198.51.100.7"}, "198.51.100.7"},
+		{"untrusted real IP ignored", nil, "192.0.2.10:1234", map[string]string{"X-Real-IP": "198.51.100.7"}, "192.0.2.10"},
+		{"trusted chain parsed from right", []string{"127.0.0.1", "172.18.0.0/16"}, "127.0.0.1:1234", map[string]string{"X-Forwarded-For": "203.0.113.99, 198.51.100.7, 172.18.0.2"}, "198.51.100.7"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := newTestEngineWithProxies(t, 60, tc.proxies)
+			engine.GET("/client-ip", func(c *gin.Context) { c.String(http.StatusOK, c.ClientIP()) })
+			rec := doFrom(t, engine, http.MethodGet, "/client-ip", tc.remote, tc.headers)
+			require.Equal(t, tc.want, rec.Body.String())
+		})
+	}
+
 	t.Run("forwarded-for ignored without trusted proxies", func(t *testing.T) {
 		engine := newTestEngine(t, 1)
 		headers := map[string]string{"X-Forwarded-For": "198.51.100.1"}

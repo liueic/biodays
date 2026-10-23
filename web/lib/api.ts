@@ -58,7 +58,7 @@ export class ApiError extends Error {
   }
 }
 
-const SERVER_API_ORIGIN = process.env.BIODAYS_API_URL ?? "http://localhost:8080";
+const SERVER_API_ORIGIN = process.env.BIODAYS_API_URL || "http://127.0.0.1:8080";
 const DEFAULT_REVALIDATE = 300;
 
 type NextFetchInit = RequestInit & {
