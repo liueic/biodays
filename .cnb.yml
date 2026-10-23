@@ -40,10 +40,10 @@
         - name: test
           script: cd server && go test -race -count=1 ./...
         - name: govulncheck
-          # @latest 不带版本号，Go 不会复用 go.sum 里的模块缓存，每次都要重新下载
-          # x/vuln 及其依赖（x/tools 等）；固定面板版本 + GOFLAGS=-mod=mod 让它落进
-          # /tmp/gomod，第二次构建就基本是纯编译时间了。
-          script: cd server && GOFLAGS=-mod=mod go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+          # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
+          # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
+          # 版本要跟 Go 1.27 的语法对齐，太旧（v1.1.4）会 panic: unexpected expr。
+          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
     - name: web
       label:
@@ -117,10 +117,10 @@ main:
         - name: test
           script: cd server && go test -race -count=1 ./...
         - name: govulncheck
-          # @latest 不带版本号，Go 不会复用 go.sum 里的模块缓存，每次都要重新下载
-          # x/vuln 及其依赖（x/tools 等）；固定面板版本 + GOFLAGS=-mod=mod 让它落进
-          # /tmp/gomod，第二次构建就基本是纯编译时间了。
-          script: cd server && GOFLAGS=-mod=mod go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+          # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
+          # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
+          # 版本要跟 Go 1.27 的语法对齐，太旧（v1.1.4）会 panic: unexpected expr。
+          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
     - name: web
       label:
@@ -191,10 +191,10 @@ main:
         - name: test
           script: cd server && go test -race -count=1 ./...
         - name: govulncheck
-          # @latest 不带版本号，Go 不会复用 go.sum 里的模块缓存，每次都要重新下载
-          # x/vuln 及其依赖（x/tools 等）；固定面板版本 + GOFLAGS=-mod=mod 让它落进
-          # /tmp/gomod，第二次构建就基本是纯编译时间了。
-          script: cd server && GOFLAGS=-mod=mod go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+          # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
+          # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
+          # 版本要跟 Go 1.27 的语法对齐，太旧（v1.1.4）会 panic: unexpected expr。
+          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
     - name: web
       label:
