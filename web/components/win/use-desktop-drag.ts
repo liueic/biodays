@@ -39,6 +39,8 @@ type Options = {
   grid?: [number, number];
   /** Raise the element above other windows when it is pressed (windows yes, icons no). */
   raise?: boolean;
+  /** Temporarily turn dragging off (e.g. while a window is maximized). */
+  disabled?: boolean;
 };
 
 /**
@@ -52,6 +54,7 @@ export function useDesktopDrag<T extends HTMLElement>({
   cancel,
   grid,
   raise = true,
+  disabled = false,
 }: Options) {
   const ref = useRef<T>(null) as RefObject<T>;
   const dragging = useRef(false);
@@ -62,7 +65,7 @@ export function useDesktopDrag<T extends HTMLElement>({
     cancel,
     grid,
     bounds: "body",
-    disabled: !enabled,
+    disabled: !enabled || disabled,
     defaultPosition: positions.get(id) ?? { x: 0, y: 0 },
     threshold: { distance: 4 },
     onDragStart: () => {

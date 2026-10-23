@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { getAllStories } from "@/lib/api";
 import { SITE_URL } from "@/lib/site";
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();

@@ -4,42 +4,46 @@ import { Button, Frame, TitleBar } from "@react95/core";
 import { FileText, Folder } from "@react95/icons";
 import Link from "next/link";
 
-import { useDesktopDrag } from "@/components/win/use-desktop-drag";
+import { useWindowFrame } from "@/components/win/use-window-frame";
+import { RECENT_WINDOW } from "@/components/win/window-store";
 import type { Story } from "@/lib/api";
 import { formatMonthDay } from "@/lib/date";
+import { cn } from "@/lib/utils";
 
 type RecentWindowProps = {
   stories: Story[];
-  onClose: () => void;
   className?: string;
 };
 
 /** Small desktop window previewing the latest archived stories. */
-export function RecentWindow({ stories, onClose, className }: RecentWindowProps) {
-  const { ref } = useDesktopDrag<HTMLDivElement>({
-    id: "recent-window",
-    handle: ".window-drag-handle",
-    cancel: "button, a",
+export function RecentWindow({ stories, className }: RecentWindowProps) {
+  const frame = useWindowFrame<HTMLDivElement>({
+    id: RECENT_WINDOW,
+    title: "最近归档",
+    icon: <Folder variant="32x32_4" width={16} height={16} aria-hidden />,
   });
 
   return (
     <Frame
-      ref={ref}
+      ref={frame.ref}
+      {...frame.focusProps}
       as="section"
       aria-label="最近归档"
       bgColor="$material"
       boxShadow="$out"
       padding="$2"
-      className={className}
+      className={cn(className, frame.hidden && "hidden")}
     >
       <TitleBar
-        active
+        active={frame.active}
         title="最近归档"
         className="win98-title window-drag-handle"
+        data-inactive={frame.active ? undefined : ""}
         icon={<Folder variant="32x32_4" width={16} height={16} aria-hidden />}
       >
         <TitleBar.OptionsBox>
-          <TitleBar.Close aria-label="关闭最近归档窗口" onClick={onClose} />
+          <TitleBar.Minimize aria-label="最小化" onClick={frame.minimize} />
+          <TitleBar.Close aria-label="关闭" onClick={frame.close} />
         </TitleBar.OptionsBox>
       </TitleBar>
 

@@ -9,26 +9,12 @@ import { QuoteBlock } from "@/components/quote-block";
 import { StoryContent } from "@/components/story-content";
 import { Tag } from "@/components/win/tag";
 import { Window } from "@/components/win/window";
-import { ApiError, getStories, getStory, type Story } from "@/lib/api";
+import { ApiError, getStory, type Story } from "@/lib/api";
 import { formatStoryDate } from "@/lib/date";
 import { SITE_NAME } from "@/lib/site";
 import { safeExternalUrl } from "@/lib/url";
 
-export const revalidate = 300;
-export const dynamicParams = true;
-
-const PRERENDER_LIMIT = 12;
-
-export async function generateStaticParams() {
-  try {
-    // Pre-render a small set at build time, then let ISR fill the rest on demand.
-    // This keeps builds independent of the API's per-IP rate limit.
-    const stories = await getStories({ page: 1, pageSize: PRERENDER_LIMIT });
-    return stories.data.map((story) => ({ id: story.id }));
-  } catch {
-    return [];
-  }
-}
+export const dynamic = "force-dynamic";
 
 type PageProps = { params: Promise<{ id: string }> };
 

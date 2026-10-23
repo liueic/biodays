@@ -1,0 +1,26 @@
+name: biodays
+
+services:
+  app:
+    image: ${BIODAYS_IMAGE:-ghcr.io/liueic/biodays:latest}
+    restart: unless-stopped
+    ports:
+      - "${BIODAYS_HTTP_PORT:-8080}:3000"
+    environment:
+      BIODAYS_SITE_URL: ${BIODAYS_SITE_URL:-http://localhost:8080}
+      BIODAYS_RATE_LIMIT: ${BIODAYS_RATE_LIMIT:-60}
+      BIODAYS_LOG_LEVEL: ${BIODAYS_LOG_LEVEL:-info}
+      BIODAYS_DATA_DIR: /seed
+    volumes:
+      - biodays-data:/data
+      - ${BIODAYS_DATA_DIR:-./seed-data}:/seed:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  biodays-data:
+    name: biodays-data

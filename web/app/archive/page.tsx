@@ -7,7 +7,7 @@ import { Window } from "@/components/win/window";
 import { getAllStories, getMeta, getStories, getTags } from "@/lib/api";
 import { SITE_NAME } from "@/lib/site";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "档案",

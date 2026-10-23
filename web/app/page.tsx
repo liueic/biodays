@@ -5,7 +5,7 @@ import { getStories, getToday, type Story } from "@/lib/api";
 import { getTodayStamp } from "@/lib/date";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   try {

@@ -5,5 +5,4 @@ export const SITE_DESCRIPTION =
 
 export const SITE_URL = process.env.BIODAYS_SITE_URL ?? "http://localhost:3000";
 
-export const DOCS_URL =
-  process.env.NEXT_PUBLIC_BIODAYS_DOCS_URL ?? "http://localhost:8080/swagger/index.html";
+export const DOCS_URL = process.env.NEXT_PUBLIC_BIODAYS_DOCS_URL ?? "/swagger/index.html";

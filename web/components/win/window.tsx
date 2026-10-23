@@ -5,8 +5,9 @@ import { Globe } from "@react95/icons";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactElement, ReactNode } from "react";
-
-import { useDesktopDrag } from "@/components/win/use-desktop-drag";
+import { useWindowFrame } from "@/components/win/use-window-frame";
+import { MAIN_WINDOW } from "@/components/win/window-store";
+import { cn } from "@/lib/utils";
 
 const MENU = [
   { href: "/", label: "今日", key: "T" },
@@ -25,26 +26,43 @@ type WindowProps = {
 export function Window({ title, icon, status = [], children }: WindowProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { ref: windowRef } = useDesktopDrag<HTMLDivElement>({
-    id: "main-window",
-    handle: ".window-drag-handle",
-    cancel: "button",
+  const frame = useWindowFrame<HTMLDivElement>({
+    id: MAIN_WINDOW,
+    title,
+    icon,
+    reopenOnMount: true,
   });
 
   return (
     <Frame
-      ref={windowRef}
+      ref={frame.ref}
+      {...frame.focusProps}
       aria-label={title}
       bgColor="$material"
       boxShadow="$out"
       padding="$2"
-      className="relative mx-auto w-full max-w-[880px]"
+      className={cn(
+        "relative mx-auto w-full max-w-[880px]",
+        frame.hidden && "hidden",
+        frame.maximized && !frame.hidden && "win-maximized",
+      )}
     >
-      <TitleBar active title={title} icon={icon} className="win98-title window-drag-handle">
+      <TitleBar
+        active={frame.active}
+        title={title}
+        icon={icon}
+        className="win98-title window-drag-handle"
+        data-inactive={frame.active ? undefined : ""}
+        onDoubleClick={frame.toggleMaximize}
+      >
         <TitleBar.OptionsBox>
-          <TitleBar.Minimize aria-hidden tabIndex={-1} />
-          <TitleBar.Maximize aria-hidden tabIndex={-1} />
-          <TitleBar.Close aria-label="关闭，回到首页" onClick={() => router.push("/")} />
+          <TitleBar.Minimize aria-label="最小化" onClick={frame.minimize} />
+          {frame.maximized ? (
+            <TitleBar.Restore aria-label="还原" onClick={frame.toggleMaximize} />
+          ) : (
+            <TitleBar.Maximize aria-label="最大化" onClick={frame.toggleMaximize} />
+          )}
+          <TitleBar.Close aria-label="关闭" onClick={frame.close} />
         </TitleBar.OptionsBox>
       </TitleBar>
 
@@ -94,7 +112,7 @@ export function Window({ title, icon, status = [], children }: WindowProps) {
         boxShadow="$in"
         bgColor="$inputBackground"
         padding="$16"
-        className="min-h-[360px] sm:p-6"
+        className="window-content min-h-[360px] sm:p-6"
       >
         {children}
       </Frame>
