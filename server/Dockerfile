@@ -4,7 +4,8 @@
 # repository-root Dockerfile, which bundles the Next.js frontend and Go API.
 
 FROM golang:1.27.3-alpine AS build
-RUN apk add --no-cache gcc musl-dev
+# 同根 Dockerfile：cgo 编译 go-sqlite3 需要 gcc/musl-dev，alpine 版 golang 镜像不自带。
+RUN apk add --no-cache --no-progress build-base
 WORKDIR /src
 ENV CGO_ENABLED=1
 
