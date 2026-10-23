@@ -244,7 +244,7 @@ docker run -d --name biodays -p 8080:3000 \
 - `1.2.3` / `1.2`：Git tag（如 `v1.2.3`）
 - PR 只构建校验，不推送
 
-拉取运行（私有仓库需先 `docker login docker.cnb.cool`）：
+拉取运行（制品库私有化时需先 `docker login docker.cnb.cool -u cnb -p <访问令牌>`，公开则直接拉）：
 
 ```bash
 docker pull docker.cnb.cool/ciallo.cv/biodays:latest
@@ -263,13 +263,15 @@ docker run -d --name biodays -p 8080:3000 \
 ```bash
 cp .env.example .env
 # 编辑 .env：设置 BIODAYS_SITE_URL 与 BIODAYS_DATA_DIR
-# 私有镜像需要先登录：docker login docker.cnb.cool
+# 制品库私有化时需要先登录：docker login docker.cnb.cool -u cnb -p <访问令牌>
 
 docker compose pull
 docker compose up -d
 docker compose logs -f app
 curl http://127.0.0.1:8080/readyz
 ```
+
+compose 内置了 `pull_policy`（默认 `missing`）与容器 `init`，健康检查直接复用镜像自带的 `/readyz`；`BIODAYS_DB_PATH` 在 compose 里固定为 `/data/biodays.db`，与命名卷对齐。
 
 打开 `http://<服务器>:8080/` 即可使用，不需要单独部署前端，也不需要手动执行 seed。数据更新后重启容器即可重新导入：
 
@@ -281,7 +283,7 @@ docker compose restart app
 
 - 对外只有一个端口；`BIODAYS_HTTP_PORT` 可以改成 80 等。
 - `BIODAYS_SITE_URL` 应设置为用户实际访问的地址，用于 canonical、sitemap 和 robots。
-- `BIODAYS_DATA_DIR` 必须指向包含 `stories_*.json` 的目录，并以只读方式挂载；该目录需对容器内 `biodays` 用户可读。
+- `BIODAYS_DATA_DIR` 必须指向包含 `stories_*.json` 的目录（建议绝对路径），并以只读方式挂载；该目录需对容器内 `biodays`（非 root）可读，否则启动时 seed 会跳过。
 - SQLite 数据保存在命名卷 `biodays-data`，会自动创建；`/data` 与 `/seed` 是两个独立挂载点。
 - 生产环境建议把 `BIODAYS_IMAGE` 固定到版本 tag 或 digest，而不是长期使用 `latest`。
 - 如果需要对公网提供 HTTPS，在 8080（或 80）前加 Caddy/Nginx/Cloudflare 即可；镜像内部的两个进程无需再拆开。

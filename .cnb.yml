@@ -6,6 +6,7 @@
 #
 # 工具链版本与 .prototools 对齐：Go 1.27.3、Bun 1.4.4。
 # cgo（go-sqlite3）需要 gcc，golang 镜像自带 build-base，无需另装。
+# container 流水线依赖 services: docker 提供 docker CLI/daemon，缺失会直接 command not found。
 #
 # 镜像地址 ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
 #   push main  -> latest / main / sha-<短哈希>
@@ -127,6 +128,9 @@ main:
         key: ci-container
         cancel-in-progress: true
         wait: true
+      # 必须声明 docker 服务，否则环境内没有 docker CLI/daemon（cnb: command not found）
+      services:
+        - docker
       env:
         IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
       stages:
@@ -181,6 +185,8 @@ main:
     - name: container
       label:
         type: RELEASE
+      services:
+        - docker
       env:
         IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
       stages:

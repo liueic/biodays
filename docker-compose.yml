@@ -1,16 +1,40 @@
+# biodays —— 单容器部署（Next.js + Go API 同一端口）
+#
+# 镜像来自 CNB Docker 制品库（由 .cnb.yml 的 container 流水线推送）：
+#   docker.cnb.cool/ciallo.cv/biodays:<tag>
+#
+# 用法：
+#   cp .env.example .env   # 至少设置 BIODAYS_SITE_URL 与 BIODAYS_DATA_DIR
+#   docker compose pull && docker compose up -d
+#
+# 镜像私有化时需先登录（访问令牌见 CNB「个人设置 / 访问令牌」）：
+#   docker login docker.cnb.cool -u cnb -p <访问令牌>
+# 公开制品库无需登录，直接 pull。
+#
+# 故事数据 stories_*.json 不在仓库内，必须以只读方式挂载到 /seed，
+# 容器启动时由 Go API 幂等导入 /data/biodays.db（命名卷，重启不丢）。
+
 name: biodays
 
 services:
   app:
     image: ${BIODAYS_IMAGE:-docker.cnb.cool/ciallo.cv/biodays:latest}
+    pull_policy: ${BIODAYS_PULL_POLICY:-missing}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    init: true
     restart: unless-stopped
     ports:
       - "${BIODAYS_HTTP_PORT:-8080}:3000"
     environment:
+      BIODAYS_DATA_DIR: /seed
+      BIODAYS_DB_PATH: /data/biodays.db
       BIODAYS_SITE_URL: ${BIODAYS_SITE_URL:-http://localhost:8080}
       BIODAYS_RATE_LIMIT: ${BIODAYS_RATE_LIMIT:-60}
       BIODAYS_LOG_LEVEL: ${BIODAYS_LOG_LEVEL:-info}
-      BIODAYS_DATA_DIR: /seed
     volumes:
       - biodays-data:/data
       - ${BIODAYS_DATA_DIR:-./seed-data}:/seed:ro
