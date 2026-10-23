@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1
 
+# 构建阶段互不依赖，server-build 与 web-build 由 buildkit 并行执行，
+# 整体构建时长 ≈ max(Go 编译, 前端构建) 而不是两者之和。
+
 FROM golang:1.27.3-alpine AS server-build
 # cgo（go-sqlite3）需要 gcc。golang:*-alpine 不自带 build-base，这里的 apk add 是必需的：
 # 删掉它 CI 会在 go build 阶段报 C compiler "gcc" not found。
@@ -9,16 +12,24 @@ WORKDIR /src
 ENV CGO_ENABLED=1
 
 COPY server/go.mod server/go.sum ./
-RUN go mod download
+# --mount=type=cache 挂在 buildkit 的持久缓存上（跨构建保留），
+# 依赖没变时 go mod download 直接命中缓存、不再走网络。
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 COPY server/ ./
-RUN go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
 
 FROM oven/bun:1.4.4 AS web-build
 WORKDIR /app/web
 
 COPY web/package.json web/bun.lock ./
-RUN bun install --frozen-lockfile
+# bun 的全局模块缓存 + Next.js 的构建缓存都挂到 buildkit 缓存上
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 
 COPY web/ ./
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -26,7 +37,9 @@ ENV BIODAYS_API_URL=http://127.0.0.1:8080
 ENV NEXT_PUBLIC_BIODAYS_DOCS_URL=/swagger/index.html
 ARG BIODAYS_SITE_URL=http://localhost:8080
 ENV BIODAYS_SITE_URL=$BIODAYS_SITE_URL
-RUN bun run build
+# .next/cache（webpack/turbopack 增量缓存）跨构建复用，改少量文件时不必全量重编
+RUN --mount=type=cache,target=/app/web/.next/cache \
+    bun run build
 
 FROM node:24-alpine
 RUN apk add --no-cache ca-certificates \
