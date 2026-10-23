@@ -40,7 +40,9 @@
         - name: govulncheck
           # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
           # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
-          # 版本要跟 Go 1.27 的语法对齐，太旧（v1.1.4）会 panic: unexpected expr。
+          # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
+          # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
+          # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
           script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
     - name: web
@@ -115,7 +117,9 @@ main:
         - name: govulncheck
           # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
           # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
-          # 版本要跟 Go 1.27 的语法对齐，太旧（v1.1.4）会 panic: unexpected expr。
+          # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
+          # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
+          # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
           script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
     - name: web
@@ -187,7 +191,9 @@ main:
         - name: govulncheck
           # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
           # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
-          # 版本要跟 Go 1.27 的语法对齐，太旧（v1.1.4）会 panic: unexpected expr。
+          # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
+          # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
+          # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
           script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
 
     - name: web
