@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 
 import { Providers } from "@/components/providers";
 import { DesktopTaskbar } from "@/components/win/taskbar";
@@ -67,6 +68,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <DesktopTaskbar />
         </Providers>
+        {process.env.NODE_ENV === "production" && (
+          <>
+            <Script
+              id="umami-analytics"
+              src="https://ana.juniortree.com/script.js"
+              data-website-id="c3b4bed2-5ad6-4265-9c23-f9e462a829c4"
+              strategy="afterInteractive"
+              defer
+            />
+            <Script
+              id="umami-recorder"
+              src="https://ana.juniortree.com/recorder.js"
+              data-website-id="c3b4bed2-5ad6-4265-9c23-f9e462a829c4"
+              strategy="lazyOnload"
+              defer
+            />
+          </>
+        )}
       </body>
     </html>
   );

@@ -55,6 +55,12 @@ bun run format     # Biome format --write
 | `/about`                      | ISR 300s            | 每日机制、数据覆盖、API 速查与来源声明                          |
 | `/sitemap.xml`, `/robots.txt` | 动态 metadata route | 自动包含全部故事 URL 与搜索引擎规则                             |
 
+## 使用统计
+
+生产环境通过根布局接入 `https://ana.juniortree.com` 的 Umami，网站 ID 为 `c3b4bed2-5ad6-4265-9c23-f9e462a829c4`。访问统计脚本在页面初始化后加载，录制脚本在页面加载完成后的浏览器空闲时间加载；全站共用，页面切换不会重复插入脚本。本地 `bun run dev` 不加载统计脚本。
+
+录制和热力图是否启用、采样率及遮罩规则由 Umami 后台的该网站设置控制。
+
 ## 部署
 
 Vercel 或任意 Node / Bun 托管：
