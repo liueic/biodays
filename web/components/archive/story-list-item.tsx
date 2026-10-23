@@ -6,6 +6,7 @@ import { formatMonthDay } from "@/lib/date";
 
 /** One row of the explorer "details" view. */
 export function StoryRow({ story }: { story: Story }) {
+  const tags = Array.isArray(story.tags) ? story.tags : [];
   return (
     <tr className="group align-top hover:bg-[#000080] hover:text-white">
       <td className="whitespace-nowrap px-2 py-1">{formatMonthDay(story.month, story.day)}</td>
@@ -19,7 +20,7 @@ export function StoryRow({ story }: { story: Story }) {
           <span>{story.title}</span>
         </Link>
       </td>
-      <td className="hidden px-2 py-1 sm:table-cell">{story.tags.slice(0, 2).join("、")}</td>
+      <td className="hidden px-2 py-1 sm:table-cell">{tags.slice(0, 2).join("、")}</td>
     </tr>
   );
 }

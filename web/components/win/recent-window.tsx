@@ -17,6 +17,7 @@ type RecentWindowProps = {
 
 /** Small desktop window previewing the latest archived stories. */
 export function RecentWindow({ stories, className }: RecentWindowProps) {
+  const items = Array.isArray(stories) ? stories.filter(Boolean) : [];
   const frame = useWindowFrame<HTMLDivElement>({
     id: RECENT_WINDOW,
     title: "最近归档",
@@ -54,7 +55,7 @@ export function RecentWindow({ stories, className }: RecentWindowProps) {
         padding="$2"
         className="mt-[2px] list-none"
       >
-        {stories.map((story) => (
+        {items.map((story) => (
           <li key={story.id}>
             <Link href={`/story/${story.id}`} className="recent-story-link" title={story.title}>
               <FileText variant="16x16_4" aria-hidden className="shrink-0" />

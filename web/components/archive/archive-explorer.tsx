@@ -8,18 +8,28 @@ import { useEffect, useRef, useState } from "react";
 import { StoryRow } from "@/components/archive/story-list-item";
 import { ErrorState } from "@/components/error-state";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { getStories, type StoryListResponse, type TagCount } from "@/lib/api";
+import { getStories, type Story, type StoryList, type TagCount } from "@/lib/api";
 
 const PAGE_SIZE = 12;
 const ALL_MONTHS = "全部月份";
 
 type ArchiveExplorerProps = {
-  initial: StoryListResponse;
+  initial: StoryList;
   tags: TagCount[];
   monthCounts: Record<number, number>;
 };
 
-export function ArchiveExplorer({ initial, tags, monthCounts }: ArchiveExplorerProps) {
+// Props come from a server component, so guard the arrays at the client boundary:
+// anything that is not an array (null from an odd API reply, an older payload shape)
+// would blow up on .map() during render.
+function asArray<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: ArchiveExplorerProps) {
+  const tags = asArray(rawTags);
+  const initialTotal = initial.meta?.total ?? 0;
+
   const [month, setMonth] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -57,7 +67,9 @@ export function ArchiveExplorer({ initial, tags, monthCounts }: ArchiveExplorerP
     placeholderData: keepPreviousData,
   });
 
-  const stories = query.data?.data ?? [];
+  const stories = asArray(query.data?.data).filter(
+    (story): story is Story => story != null && typeof story === "object",
+  );
   const total = query.data?.meta.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasFilters = month !== null || tag !== null || debouncedSearch !== "";
@@ -136,7 +148,7 @@ export function ArchiveExplorer({ initial, tags, monthCounts }: ArchiveExplorerP
             data={[
               {
                 id: 0,
-                label: `全部 (${initial.meta.total})`,
+                label: `全部 (${initialTotal})`,
                 icon: <Folder variant="16x16_4" aria-hidden />,
                 onClick: () => selectTag(null),
               },

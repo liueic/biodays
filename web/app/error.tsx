@@ -19,6 +19,7 @@ export default function ErrorPage({
     <main className="mx-auto max-w-3xl px-5">
       <ErrorState
         title="页面出错了"
+        code={error.digest}
         description="渲染时遇到了未预期的错误，可以重试，或回到首页。"
         action={{ href: "/", label: "回到今日" }}
       >
