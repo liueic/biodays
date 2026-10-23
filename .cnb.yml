@@ -67,11 +67,19 @@
         wait: true
       services:
         - docker
+      env:
+        IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
+        # 构建缓存单独占一个 tag，跟产物 tag 分开，不会被当成可部署镜像
+        CACHE_IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE:buildcache
       stages:
         - name: build
           script: |
+            # PR 只校验能构建成功，产物不落盘。
+            # Layer 缓存走 registry：缓存未变化的分支后续复用，不必从零编译。
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
+              --cache-from type=registry,ref=$CACHE_IMAGE \
+              --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
               --output type=cacheonly \
               --provenance=false --sbom=false \
               .
@@ -133,11 +141,14 @@ main:
         - docker
       env:
         IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
+        CACHE_IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE:buildcache
       stages:
         - name: build and push
           script: |
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
+              --cache-from type=registry,ref=$CACHE_IMAGE \
+              --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
               -t $IMAGE:latest \
               -t $IMAGE:main \
               -t $IMAGE:sha-$CNB_COMMIT_SHORT \
@@ -189,6 +200,7 @@ main:
         - docker
       env:
         IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
+        CACHE_IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE:buildcache
       stages:
         - name: build and push
           script: |
@@ -197,6 +209,8 @@ main:
             MINOR=${VERSION%.*}
             docker buildx build \
               --platform linux/amd64,linux/arm64 \
+              --cache-from type=registry,ref=$CACHE_IMAGE \
+              --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
               -t $IMAGE:$VERSION \
               -t $IMAGE:$MINOR \
               -t $IMAGE:latest \
