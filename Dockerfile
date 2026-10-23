@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 FROM golang:1.27.3-alpine AS server-build
-RUN apk add --no-cache gcc musl-dev
+# golang:*-alpine 自带 build-base（gcc/musl-dev），cgo 已够用，不必再装；
+# 若 apk 拉取索引超时，这里会整阶段失败，而它本来什么都不需要装。
 WORKDIR /src
 ENV CGO_ENABLED=1
 
