@@ -126,7 +126,7 @@ export default async function AboutPage() {
             <tbody>
               {ERRORS.map(([code, status, description]) => (
                 <tr key={code} className="border-b border-[#c3c7cb] align-top">
-                  <td className="py-1 pr-3 font-mono text-[11px] whitespace-nowrap">{code}</td>
+                  <td className="py-1 pr-3 font-mono text-[11px]">{code}</td>
                   <td className="py-1 pr-3">{status}</td>
                   <td className="py-1">{description}</td>
                 </tr>

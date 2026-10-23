@@ -21,7 +21,7 @@ function bringToFront(element: HTMLElement) {
   element.style.zIndex = String(topZ);
 }
 
-const DESKTOP_QUERY = "(min-width: 768px)";
+const DESKTOP_QUERY = "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
 function useIsDesktop() {
   const [matches, setMatches] = useState(false);
@@ -51,7 +51,7 @@ type Options = {
 };
 
 /**
- * Makes an element draggable on the desktop (≥768px; narrower screens keep the stacked layout).
+ * Makes an element draggable with a desktop pointer; touch screens keep native scrolling.
  * Returns a ref for the element and a `wasDragged()` check so click handlers can ignore the
  * click that browsers fire at the end of a drag.
  */
@@ -87,6 +87,17 @@ export function useDesktopDrag<T extends HTMLElement>({
       }, 0);
     },
   });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    // Neodrag sets touch-action:none on the entire root even when disabled.
+    // Only desktop icons need that; windows restrict dragging to their title bar.
+    element.style.touchAction = enabled && !disabled && !handle ? "none" : "auto";
+    const position = enabled && !disabled ? (positions.get(id) ?? ORIGIN) : ORIGIN;
+    element.style.translate = `${position.x}px ${position.y}px`;
+    if (!enabled || disabled) dragging.current = false;
+  }, [enabled, disabled, handle, id]);
 
   useEffect(() => {
     const element = ref.current;

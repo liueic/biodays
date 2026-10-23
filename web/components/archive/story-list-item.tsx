@@ -14,10 +14,10 @@ export function StoryRow({ story }: { story: StorySummary }) {
       <td className="px-2 py-1">
         <Link
           href={`/story/${story.id}`}
-          className="inline-flex items-start gap-1 !text-inherit no-underline group-hover:underline"
+          className="inline-flex max-w-full min-w-0 items-start gap-1 !text-inherit no-underline group-hover:underline"
         >
           <FileText variant="16x16_4" aria-hidden className="mt-[1px] shrink-0" />
-          <span>{story.title}</span>
+          <span className="min-w-0">{story.title}</span>
         </Link>
       </td>
       <td className="hidden px-2 py-1 sm:table-cell">{tags.slice(0, 2).join("、")}</td>

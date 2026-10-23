@@ -151,7 +151,7 @@ export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: Archive
         <Frame
           boxShadow="$in"
           bgColor="$inputBackground"
-          className="max-h-[420px] overflow-auto p-1"
+          className="max-h-[220px] min-w-0 overflow-auto p-1 md:max-h-[420px]"
         >
           <label htmlFor="tag-search">筛选标签</label>
           <Input
@@ -213,7 +213,11 @@ export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: Archive
         </Frame>
 
         <div ref={topRef} className="min-w-0 scroll-mt-2">
-          <Frame boxShadow="$in" bgColor="$inputBackground" className="max-h-[420px] overflow-auto">
+          <Frame
+            boxShadow="$in"
+            bgColor="$inputBackground"
+            className="min-w-0 md:max-h-[420px] md:overflow-auto"
+          >
             {query.isError ? (
               <ErrorState
                 title="加载失败"
@@ -233,7 +237,7 @@ export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: Archive
               </ErrorState>
             ) : (
               <table
-                className={`w-full border-collapse text-left ${query.isPlaceholderData ? "opacity-60" : ""}`}
+                className={`w-full table-fixed border-collapse text-left ${query.isPlaceholderData ? "opacity-60" : ""}`}
               >
                 <thead className="sticky top-0 bg-[#c3c7cb]">
                   <tr>
