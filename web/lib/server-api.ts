@@ -1,10 +1,16 @@
 import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
 import { cache } from "react";
 
 import { getAllStories, getMeta, getStories, getTags, getToday } from "@/lib/api";
 
 // Reuse within one request, including generateMetadata. Today's date is always read live.
-export const getRequestToday = cache(getToday);
+export const getRequestToday = cache(async () => {
+  const history = (await cookies()).get("biodays_read_v1");
+  // Forward only this reader preference, never other site cookies. The result
+  // stays within this render pass and is not added to a shared cache.
+  return getToday(undefined, history ? `${history.name}=${history.value}` : undefined);
+});
 
 export const getCachedArchive = unstable_cache(
   async () => {

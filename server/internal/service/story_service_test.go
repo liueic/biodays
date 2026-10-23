@@ -93,6 +93,40 @@ func TestTodayFallsBackToRandom(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrInvalidOffset)
 }
 
+func TestTodayIncludesOtherIDFormatsAndPrefersUnread(t *testing.T) {
+	st := newStore(t)
+	seedStory(t, st, "Q4-01", 10, 16, 1900)
+	seedStory(t, st, "BIO-C4-01", 10, 16, 2000)
+	seedStory(t, st, "article-42", 10, 16, 2020)
+	seedStory(t, st, "other-date", 7, 1, 2000)
+	clock := func() time.Time { return time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC) }
+	svc := service.NewStoryServiceWithClock(st, clock)
+	for _, wanted := range []string{"Q4-01", "BIO-C4-01", "article-42"} {
+		seen := []string{"other-date"}
+		for _, id := range []string{"Q4-01", "BIO-C4-01", "article-42"} {
+			if id != wanted {
+				seen = append(seen, id)
+			}
+		}
+		story, isFallback, err := svc.TodayUnread(context.Background(), "UTC", service.FallbackNone, seen)
+		require.NoError(t, err)
+		require.False(t, isFallback)
+		require.Equal(t, wanted, story.ID)
+	}
+	story, isFallback, err := svc.TodayUnread(context.Background(), "UTC", service.FallbackNone,
+		[]string{"Q4-01", "BIO-C4-01", "article-42"})
+	require.NoError(t, err)
+	require.False(t, isFallback)
+	require.Contains(t, []string{"Q4-01", "BIO-C4-01", "article-42"}, story.ID)
+	// On dates with no matches, the fallback also honors browser history.
+	svc = service.NewStoryServiceWithClock(st, func() time.Time { return time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC) })
+	story, isFallback, err = svc.TodayUnread(context.Background(), "UTC", service.FallbackRandom,
+		[]string{"Q4-01", "BIO-C4-01", "article-42"})
+	require.NoError(t, err)
+	require.True(t, isFallback)
+	require.Equal(t, "other-date", story.ID)
+}
+
 func TestBuildMeta(t *testing.T) {
 	meta := service.BuildMeta(104, []int{1, 2, 3, 10, 11, 12})
 	require.EqualValues(t, 104, meta.Total)

@@ -1,3 +1,5 @@
+import { waitForHistory } from "@/lib/history";
+
 export type StorySource = {
   type: string;
   citation: string;
@@ -85,11 +87,12 @@ async function request<T>(
   path: string,
   params: Record<string, QueryValue> = {},
   revalidate = DEFAULT_REVALIDATE,
+  headers: Record<string, string> = {},
 ): Promise<T> {
   const isServer = typeof window === "undefined";
   const origin = isServer ? SERVER_API_ORIGIN : "";
   const init: NextFetchInit = {
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", ...headers },
   };
   if (path === "/stories/random" || path === "/today") {
     init.cache = "no-store";
@@ -114,11 +117,16 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-export function getToday(options?: { tz?: string; fallback?: "random" | "none" }) {
-  return request<TodayResponse>("/today", {
-    tz: options?.tz ?? "+08:00",
-    fallback: options?.fallback ?? "random",
-  });
+export function getToday(
+  options?: { tz?: string; fallback?: "random" | "none" },
+  historyCookie?: string,
+) {
+  return request<TodayResponse>(
+    "/today",
+    { tz: options?.tz ?? "+08:00", fallback: options?.fallback ?? "random" },
+    DEFAULT_REVALIDATE,
+    historyCookie ? { Cookie: historyCookie } : {},
+  );
 }
 
 export type StoryQuery = {
@@ -161,7 +169,8 @@ export function getStory(id: string) {
   return request<Story>(`/stories/${encodeURIComponent(id)}`);
 }
 
-export function getRandomStory(exclude: string[] = []) {
+export async function getRandomStory(exclude: string[] = []) {
+  await waitForHistory();
   return request<Story>("/stories/random", {
     exclude: exclude.length > 0 ? exclude.join(",") : undefined,
   });

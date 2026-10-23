@@ -28,7 +28,7 @@ type todayQuery struct {
 
 // Today godoc
 // @Summary      获取今日故事
-// @Description  按指定时区返回"今天"对应的故事；当日无数据时按 fallback 策略返回随机一篇并标记 is_fallback。
+// @Description  从指定时区今天对应的全部故事中优先随机选未读篇目，不限制 ID 编码格式；当日无数据时按 fallback 策略返回随机一篇并标记 is_fallback。
 // @Tags         stories
 // @Produce      json
 // @Param        tz        query     string  false  "时区偏移，例如 +08:00"  default(+08:00)
@@ -40,6 +40,8 @@ type todayQuery struct {
 // @Failure      500       {object}  ErrorResponse
 // @Router       /api/v1/today [get]
 func (h *StoryHandler) Today(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Writer.Header().Add("Vary", "Cookie")
 	var query todayQuery
 	if err := c.ShouldBindQuery(&query); err != nil {
 		fail(c, http.StatusBadRequest, CodeInvalidParam, "invalid query parameters: "+err.Error())
@@ -56,7 +58,7 @@ func (h *StoryHandler) Today(c *gin.Context) {
 		return
 	}
 
-	story, isFallback, err := h.service.Today(c.Request.Context(), query.TZ, query.Fallback)
+	story, isFallback, err := h.service.TodayUnread(c.Request.Context(), query.TZ, query.Fallback, readHistory(c.Request))
 	switch {
 	case errors.Is(err, service.ErrInvalidOffset):
 		fail(c, http.StatusBadRequest, CodeInvalidParam, err.Error())
@@ -188,13 +190,15 @@ func (h *StoryHandler) Get(c *gin.Context) {
 // @Router       /api/v1/stories/random [get]
 func (h *StoryHandler) Random(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
+	c.Writer.Header().Add("Vary", "Cookie")
 	exclude, err := parseExclude(c.Query("exclude"))
 	if err != nil {
 		fail(c, http.StatusBadRequest, CodeInvalidParam, err.Error())
 		return
 	}
 
-	story, err := h.service.Random(c.Request.Context(), exclude)
+	history := readHistory(c.Request)
+	story, reset, err := h.service.RandomUnread(c.Request.Context(), exclude, history)
 	switch {
 	case errors.Is(err, service.ErrNotFound):
 		fail(c, http.StatusNotFound, CodeStoryNotFound, "no stories available")
@@ -203,6 +207,10 @@ func (h *StoryHandler) Random(c *gin.Context) {
 		internalError(c, h.logger, err)
 		return
 	}
+	if reset {
+		history = nil
+	}
+	writeHistory(c, appendHistory(history, story.ID))
 	c.JSON(http.StatusOK, story)
 }
 

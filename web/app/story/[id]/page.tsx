@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import { NextStoryButton } from "@/components/next-story-button";
 import { QuoteBlock } from "@/components/quote-block";
 import { StoryContent } from "@/components/story-content";
+import { StoryHistoryTracker } from "@/components/story-history-tracker";
 import { Tag } from "@/components/win/tag";
 import { Window } from "@/components/win/window";
 import { ApiError, getStory, type Story } from "@/lib/api";
@@ -71,6 +72,7 @@ export default async function StoryPage({ params }: PageProps) {
         ]}
       >
         <article>
+          <StoryHistoryTracker storyId={story.id} />
           <header>
             <h1 className="text-base font-bold leading-snug text-balance">{story.title}</h1>
             <p className="mt-2 text-[#555]">

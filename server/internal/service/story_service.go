@@ -60,6 +60,12 @@ func ParseOffset(value string) (*time.Location, error) {
 }
 
 func (s *StoryService) Today(ctx context.Context, tz, fallback string) (model.StoryDTO, bool, error) {
+	return s.TodayUnread(ctx, tz, fallback, nil)
+}
+
+// TodayUnread prefers unread stories on this calendar date, regardless of their
+// ID format. History resets belong to the global random-reading round only.
+func (s *StoryService) TodayUnread(ctx context.Context, tz, fallback string, seen []string) (model.StoryDTO, bool, error) {
 	if tz == "" {
 		tz = "+08:00"
 	}
@@ -72,18 +78,18 @@ func (s *StoryService) Today(ctx context.Context, tz, fallback string) (model.St
 	}
 
 	now := s.now().In(location)
-	stories, err := s.store.GetByMonthDay(ctx, int(now.Month()), int(now.Day()))
-	if err != nil {
-		return model.StoryDTO{}, false, err
+	story, err := s.store.RandomUnreadByMonthDay(ctx, int(now.Month()), int(now.Day()), seen)
+	if err == nil {
+		return story.ToDTO(), false, nil
 	}
-	if len(stories) > 0 {
-		return stories[0].ToDTO(), false, nil
+	if !errors.Is(err, store.ErrNotFound) {
+		return model.StoryDTO{}, false, err
 	}
 	if fallback == FallbackNone {
 		return model.StoryDTO{}, false, store.ErrNotFound
 	}
 
-	story, err := s.store.Random(ctx, nil)
+	story, _, err = s.store.RandomUnread(ctx, nil, seen)
 	if err != nil {
 		return model.StoryDTO{}, false, err
 	}
@@ -130,6 +136,14 @@ func (s *StoryService) Random(ctx context.Context, exclude []string) (model.Stor
 		return model.StoryDTO{}, err
 	}
 	return story.ToDTO(), nil
+}
+
+func (s *StoryService) RandomUnread(ctx context.Context, exclude, seen []string) (model.StoryDTO, bool, error) {
+	story, reset, err := s.store.RandomUnread(ctx, exclude, seen)
+	if err != nil {
+		return model.StoryDTO{}, false, err
+	}
+	return story.ToDTO(), reset, nil
 }
 
 func (s *StoryService) Tags(ctx context.Context) ([]model.TagCount, error) {

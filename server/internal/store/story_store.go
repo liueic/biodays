@@ -2,7 +2,11 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"fmt"
+	"io"
+	"math/big"
 	"time"
 
 	"biodays/server/internal/model"
@@ -55,23 +59,74 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]model.Story, int
 }
 
 func (s *Store) Random(ctx context.Context, exclude []string) (*model.Story, error) {
-	query := preloadTags(s.db.WithContext(ctx))
-	if len(exclude) > 0 {
-		query = query.Where("id NOT IN ?", exclude)
-	}
+	story, _, err := s.random(ctx, exclude, nil, rand.Reader)
+	return story, err
+}
 
-	var story model.Story
-	err := query.Order("RANDOM()").First(&story).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if len(exclude) > 0 {
-			return s.Random(ctx, nil)
-		}
-		return nil, ErrNotFound
-	}
+// RandomUnread draws uniformly from unseen IDs, starting a fresh round only when
+// none remain. Explicit exclusions (the current story) still apply in a new round.
+func (s *Store) RandomUnread(ctx context.Context, exclude, seen []string) (*model.Story, bool, error) {
+	return s.random(ctx, exclude, seen, rand.Reader)
+}
+
+// RandomUnreadByMonthDay uses dates as metadata, never an ID prefix. Exhausting
+// today's candidates does not reset the reader's history for the whole corpus.
+func (s *Store) RandomUnreadByMonthDay(ctx context.Context, month, day int, seen []string) (*model.Story, error) {
+	query := s.db.Where("month = ? AND day = ?", month, day)
+	story, _, err := s.randomFrom(ctx, query, nil, seen, rand.Reader)
+	return story, err
+}
+
+func (s *Store) random(ctx context.Context, exclude, seen []string, entropy io.Reader) (*model.Story, bool, error) {
+	return s.randomFrom(ctx, s.db, exclude, seen, entropy)
+}
+
+func (s *Store) randomFrom(ctx context.Context, query *gorm.DB, exclude, seen []string, entropy io.Reader) (*model.Story, bool, error) {
+	var ids []string
+	err := query.WithContext(ctx).Model(&model.Story{}).Order("id ASC").Pluck("id", &ids).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &story, nil
+	if len(ids) == 0 {
+		return nil, false, ErrNotFound
+	}
+	blocked := make(map[string]bool, len(exclude)+len(seen))
+	for _, id := range exclude {
+		blocked[id] = true
+	}
+	for _, id := range seen {
+		blocked[id] = true
+	}
+	candidates := unblockedIDs(ids, blocked)
+	reset := len(candidates) == 0 && len(seen) > 0
+	if len(candidates) == 0 {
+		clear(blocked)
+		for _, id := range exclude {
+			blocked[id] = true
+		}
+		candidates = unblockedIDs(ids, blocked)
+		// Preserve the existing API's fallback for a one-story / fully excluded dataset.
+		if len(candidates) == 0 {
+			candidates = ids
+		}
+	}
+	// rand.Int uses rejection sampling, avoiding modulo bias for arbitrary counts.
+	index, err := rand.Int(entropy, big.NewInt(int64(len(candidates))))
+	if err != nil {
+		return nil, false, fmt.Errorf("random story entropy: %w", err)
+	}
+	story, err := s.GetByID(ctx, candidates[index.Int64()])
+	return story, reset, err
+}
+
+func unblockedIDs(ids []string, blocked map[string]bool) []string {
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !blocked[id] {
+			result = append(result, id)
+		}
+	}
+	return result
 }
 
 func (s *Store) TagCounts(ctx context.Context) ([]model.TagCount, error) {

@@ -15,6 +15,46 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/history": {
+            "post": {
+                "description": "将已读 ID 保存到当前浏览器的 HttpOnly Cookie，90 天过期；不会写入 SQLite。",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "stories"
+                ],
+                "summary": "记录已浏览故事",
+                "parameters": [
+                    {
+                        "description": "已展示给用户的故事",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.HistoryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "已记录"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/meta": {
             "get": {
                 "description": "返回故事总数、覆盖季度与月份范围。",
@@ -266,7 +306,7 @@ const docTemplate = `{
         },
         "/api/v1/today": {
             "get": {
-                "description": "按指定时区返回\"今天\"对应的故事；当日无数据时按 fallback 策略返回随机一篇并标记 is_fallback。",
+                "description": "从指定时区今天对应的全部故事中优先随机选未读篇目，不限制 ID 编码格式；当日无数据时按 fallback 策略返回随机一篇并标记 is_fallback。",
                 "produces": [
                     "application/json"
                 ],
@@ -403,6 +443,18 @@ const docTemplate = `{
                 "status": {
                     "type": "string",
                     "example": "ok"
+                }
+            }
+        },
+        "handler.HistoryRequest": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "maxLength": 16
                 }
             }
         },

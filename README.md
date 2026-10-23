@@ -134,11 +134,12 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 |---|---|---|---|
 | GET | `/healthz` | 存活检查（不计入限流） | 无 |
 | GET | `/readyz` | 就绪检查，含数据库连通性（不计入限流） | 无 |
-| GET | `/api/v1/today` | 今日故事 | `tz`（默认 `+08:00`）、`fallback`（`random` 或 `none`） |
+| GET | `/api/v1/today` | 当日全部候选中优先随机选未读故事 | `tz`（默认 `+08:00`）、`fallback`（`random` 或 `none`） |
 | GET | `/api/v1/stories` | 分页列表 | `month`、`day`、`tag`、`q`、`page`、`page_size`（上限 100）、`view=full|summary`（默认 full） |
 | GET | `/api/v1/stories/{id}` | 单篇详情（含正文与引用） | 路径参数 `id`（如 `Q1-01`） |
-| GET | `/api/v1/stories/random` | 随机一篇 | `exclude`（逗号分隔排除列表，如 `Q1-01,Q4-02`） |
+| GET | `/api/v1/stories/random` | 优先随机未读故事，更新已读 Cookie | `exclude`（逗号分隔排除列表，如 `Q1-01,Q4-02`） |
 | GET | `/api/v1/tags` | 全部标签及关联篇数 | 无 |
+| POST | `/api/v1/history` | 记录浏览，仅更新 Cookie，成功返回 204 | JSON：`{"id":"Q1-01"}` |
 | GET | `/api/v1/meta` | 数据集指标（总篇数、月份计数、覆盖、数据版本） | 无 |
 
 调用示例：
@@ -169,7 +170,7 @@ curl 'http://localhost:8080/api/v1/today?fallback=none'
 ```
 
 - 常见错误码：`INVALID_PARAM` (400)、`STORY_NOT_FOUND` (404)、`RATE_LIMITED` (429)、`INTERNAL_ERROR` (500)。
-- 缓存策略：普通 GET 成功响应携带 `Cache-Control: public, max-age=300`；随机故事、健康检查和错误响应携带 `no-store`。`view=summary` 省略正文、来源与 geek_quote，供前端列表使用；详情与默认 full 响应不变。
+- 缓存策略：普通 GET 成功响应携带 `Cache-Control: public, max-age=300`；随机故事、今日推荐、浏览记录、健康检查和错误响应携带 `no-store`。`view=summary` 省略正文、来源与 geek_quote，供前端列表使用；详情与默认 full 响应不变。
 
 ---
 
@@ -222,7 +223,7 @@ docker run -d --name biodays -p 127.0.0.1:8080:3000 \
 
 打开同一个入口即可访问：`/`（前端）、`/api/v1/*`（API）、`/swagger/index.html`（文档）、`/readyz`（健康检查）。启动会校验数据库含有故事；空库会明确报错并退出，避免健康检查通过但今日接口持续 404。
 
-更新故事时修改 `data/stories_*.json` 并刷新 `data/manifest.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 只有读取端点，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
+更新故事时修改 `data/stories_*.json` 并刷新 `data/manifest.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 不修改故事数据，浏览记录存储在浏览器 Cookie 中，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
 
 #### 持续更新故事
 
@@ -331,8 +332,10 @@ bun run start
 ## 数据与架构实现说明
 
 1. **同日多篇规则与缺口兜底**：
-   - 当服务端判定某月某日存在多条故事记录时，按 `year ASC` 选取年份最早的一条，确保同一日期的“今日卡片”展示绝对稳定；
+   - `id` 仅用于稳定链接与浏览记录，不参与季度或日期判断；`Q1-01`、`BIO-C1-01` 或其他唯一 ID（最多 16 字节）同样进入归档、随机与日期推荐，无需按 Q 编码重命名。
+   - 当服务端判定某月某日存在多条故事记录时，按独立的 `month` / `day` 元数据筛选，从所有未读候选中等概率抽取；当日候选全读过后可重读，不清空其他日期的浏览记录。
    - 数据未覆盖的日期由 `/api/v1/today` 随机推荐一篇，并在元数据中标记 `meta.is_fallback = true`，前端状态栏会向用户清晰呈现提示；
+   - 首页服务端渲染只向内部 API 转发已读 Cookie，并在单次渲染内复用结果；`today` 返回 `no-store` / `Vary: Cookie`，避免其他用户或旧缓存固定住推荐结果。
 2. **幂等 Seed 机制**：
    - `biodays seed` 会扫描指定目录下的全部 `stories_*.json` 文件，根据主键 `id` 幂等 upsert；
    - 生产镜像在构建时生成 SQLite，启动时只迁移并校验已有数据；本地开发仍可通过 `BIODAYS_DATA_DIR` 自动导入。
@@ -343,7 +346,14 @@ bun run start
 4. **CGO SQLite 驱动选型**：
    - 采用 GORM 官方 `gorm.io/driver/sqlite`（底层 `mattn/go-sqlite3`，内置 SQLite amalgamation），取代此前因本机 CGO 工具链故障而使用的纯 Go `glebarez/sqlite`；
    - 优势是官方维护、与 GORM 版本同步、贴近上游 SQLite 行为，并支持 FTS5/JSON1 等扩展能力；代价是构建需要 C 工具链，跨平台交叉编译需准备对应的 C 交叉编译器；
-5. **内容来源**：
+5. **随机与浏览记录**：
+   - 通过 Go `crypto/rand.Reader` 获取操作系统支持的密码学随机数，使用 `rand.Int` 无偏抽取候选 ID；不使用固定 seed、时间戳、轮播次序或 SQLite `RANDOM()` 排序。
+   - 当前浏览器的已读 ID 存入 `biodays_read_v1` Cookie，压缩后可完整保存目前 408 篇；HTTPOnly、SameSite=Lax、HTTPS 下 Secure，90 天有效且随阅读续期，不存服务器数据库。
+   - 首页卡片与实际打开的详情页在客户端调用 `POST /api/v1/history` 记录展示的故事；预加载和 ISR 生成不会标记为已读，故事 HTML 可继续共享缓存。
+   - 随机抽取先排除已读及显式 `exclude`，全部读完后清空本轮历史重新抽取，仍尽量避开当前篇；只有一篇或显式排除全部时保持原来的兜底行为。新故事自动作为未读候选。
+   - Cookie 与账号、其他浏览器或设备不互通，清除 Cookie 会清空记录。为遵守浏览器容量限制，最多保存 2048 个 ID，压缩值不超过 3500 字节；未来数据超过容量时保留较新的记录。
+   - 随机响应为 `no-store`，并保留 `Vary: Cookie`；浏览器随机请求也使用 `cache: no-store`。这是密码学随机抽样并结合已读去重，不宣称物理硬件真随机。
+6. **内容来源**：
    - 条目内容均基于科学史专利、期刊论文、诺贝尔奖官方新闻稿及科研机构历史档案整理改写；单篇条目随 API 携带 citation 引用与原始链接。
 
 ---

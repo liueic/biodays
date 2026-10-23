@@ -58,6 +58,7 @@ func NewWithClock(cfg config.Config, st *store.Store, logger *slog.Logger, now f
 	v1.GET("/stories/:id", storyHandler.Get)
 	v1.GET("/tags", storyHandler.Tags)
 	v1.GET("/meta", storyHandler.Meta)
+	v1.POST("/history", storyHandler.History)
 
 	engine.GET("/swagger/*any", withSwaggerTheme(ginSwagger.WrapHandler(swaggerFiles.Handler)))
 	return engine, nil
@@ -65,7 +66,7 @@ func NewWithClock(cfg config.Config, st *store.Store, logger *slog.Logger, now f
 
 func corsConfig(origins []string) cors.Config {
 	cfg := cors.Config{
-		AllowMethods:     []string{"GET", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
 		ExposeHeaders:    []string{"Cache-Control", "X-RateLimit-Limit", "Retry-After"},
 		AllowCredentials: false,

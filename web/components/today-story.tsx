@@ -7,6 +7,7 @@ import { useState } from "react";
 
 import { QuoteBlock } from "@/components/quote-block";
 import { RandomButton } from "@/components/random-button";
+import { StoryHistoryTracker } from "@/components/story-history-tracker";
 import { Tag } from "@/components/win/tag";
 import { Window } from "@/components/win/window";
 import type { Story } from "@/lib/api";
@@ -35,6 +36,7 @@ export function TodayStory({ initialStory, isFallback, stamp }: TodayStoryProps)
       icon={<Bulb variant="32x32_4" width={16} height={16} aria-hidden />}
       status={[notice, `${stamp.year}年${stamp.month}月${stamp.day}日 ${stamp.weekday}`]}
     >
+      <StoryHistoryTracker storyId={story.id} />
       <QuoteBlock quote={story.geek_quote} />
 
       <article className="mt-6">

@@ -148,12 +148,14 @@ func TestToday(t *testing.T) {
 	body := decode[todayEnvelope](t, rec)
 	require.Equal(t, "Q4-02", body.Data.ID)
 	require.False(t, body.Meta.IsFallback)
-	require.Equal(t, "public, max-age=300", rec.Header().Get("Cache-Control"))
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	require.Contains(t, strings.Join(rec.Header().Values("Vary"), ","), "Cookie")
 
 	rec = do(t, engine, http.MethodGet, "/api/v1/today?tz=-13:00", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	body = decode[todayEnvelope](t, rec)
 	require.True(t, body.Meta.IsFallback, "UTC-13 is still 2026-10-15")
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 
 	rec = do(t, engine, http.MethodGet, "/api/v1/today?tz=-13:00&fallback=none", nil)
 	require.Equal(t, http.StatusNotFound, rec.Code)
@@ -252,6 +254,118 @@ func TestGetAndRandom(t *testing.T) {
 
 	rec = do(t, engine, http.MethodGet, "/api/v1/stories/random?exclude=Q1-01,Q4-01,Q4-02", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestRandomCookieAvoidsRepeatsAcrossRounds(t *testing.T) {
+	engine := newTestEngine(t, 1000)
+	var cookie *http.Cookie
+	current := ""
+	for round := 0; round < 2; round++ {
+		seen := map[string]bool{}
+		for i := 0; i < 3; i++ {
+			headers := map[string]string{}
+			if cookie != nil {
+				headers["Cookie"] = cookie.String()
+			}
+			path := "/api/v1/stories/random"
+			if current != "" {
+				path += "?exclude=" + current
+			}
+			rec := do(t, engine, http.MethodGet, path, headers)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+			require.Contains(t, strings.Join(rec.Header().Values("Vary"), ","), "Cookie")
+			story := decode[model.StoryDTO](t, rec)
+			require.False(t, seen[story.ID], "must exhaust unread stories before repeating")
+			require.NotEqual(t, current, story.ID, "new rounds still exclude the current story")
+			seen[story.ID] = true
+			current = story.ID
+			cookies := rec.Result().Cookies()
+			require.Len(t, cookies, 1)
+			cookie = cookies[0]
+		}
+		require.Len(t, seen, 3)
+	}
+}
+
+func TestViewedStoryCookieIsUsedByRandom(t *testing.T) {
+	engine := newTestEngine(t, 1000)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/history", strings.NewReader(`{"id":"Q1-01"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	cookies := rec.Result().Cookies()
+	require.Len(t, cookies, 1)
+	rec = do(t, engine, http.MethodGet, "/api/v1/stories/random?exclude=Q4-02", map[string]string{"Cookie": cookies[0].String()})
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "Q4-01", decode[model.StoryDTO](t, rec).ID)
+	// Another browser's cookie jar is independent.
+	rec = do(t, engine, http.MethodGet, "/api/v1/stories/random?exclude=Q4-01,Q4-02", nil)
+	require.Equal(t, "Q1-01", decode[model.StoryDTO](t, rec).ID)
+	for _, test := range []struct {
+		body   string
+		status int
+	}{
+		{`{"id":"missing"}`, http.StatusNotFound}, {`{"id":""}`, http.StatusBadRequest}, {`{`, http.StatusBadRequest},
+	} {
+		req = httptest.NewRequest(http.MethodPost, "/api/v1/history", strings.NewReader(test.body))
+		req.Header.Set("Content-Type", "application/json")
+		rec = httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		require.Equal(t, test.status, rec.Code)
+		require.Empty(t, rec.Result().Cookies())
+	}
+}
+
+func TestOtherIDFormatsReachTodayArchiveAndRandom(t *testing.T) {
+	st, err := store.Open("file:" + t.Name() + "?mode=memory&cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	for _, entry := range []struct {
+		id  string
+		day int
+	}{
+		{"BIO-C4-01", 16}, {"article-42", 16}, {"Q4-01", 9},
+	} {
+		require.NoError(t, st.Upsert(context.Background(), &model.Story{
+			ID: entry.id, Month: 10, Day: entry.day, Year: 2000,
+			Title: entry.id, Content: "content", GeekQuote: "quote",
+		}, nil))
+	}
+	engine, err := router.NewWithClock(config.Config{CORSOrigins: []string{"*"}, RateLimit: 1000}, st,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		func() time.Time { return time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC) })
+	require.NoError(t, err)
+	rec := do(t, engine, http.MethodGet, "/api/v1/stories", nil)
+	require.EqualValues(t, 3, decode[listEnvelope](t, rec).Meta.Total)
+	for _, id := range []string{"BIO-C4-01", "article-42"} {
+		rec = do(t, engine, http.MethodGet, "/api/v1/stories/"+id, nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, id, decode[model.StoryDTO](t, rec).ID)
+	}
+	var cookie *http.Cookie
+	for _, id := range []string{"BIO-C4-01", "article-42"} {
+		if cookie != nil {
+			rec = do(t, engine, http.MethodGet, "/api/v1/today", map[string]string{"Cookie": cookie.String()})
+			require.Equal(t, "article-42", decode[todayEnvelope](t, rec).Data.ID)
+			require.Empty(t, rec.Result().Cookies(), "selection and prefetch must not mark a story as read")
+		}
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/history", strings.NewReader(`{"id":"`+id+`"}`))
+		req.Header.Set("Content-Type", "application/json")
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		rec = httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+		cookie = rec.Result().Cookies()[0]
+	}
+	rec = do(t, engine, http.MethodGet, "/api/v1/today", map[string]string{"Cookie": cookie.String()})
+	require.False(t, decode[todayEnvelope](t, rec).Meta.IsFallback)
+	rec = do(t, engine, http.MethodGet, "/api/v1/stories/random", map[string]string{"Cookie": cookie.String()})
+	require.Equal(t, "Q4-01", decode[model.StoryDTO](t, rec).ID, "reading all today's stories must preserve global history")
 }
 
 func TestTagsAndMeta(t *testing.T) {
