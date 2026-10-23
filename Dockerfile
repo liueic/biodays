@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
 FROM golang:1.27.3-alpine AS server-build
-RUN apk add --no-cache gcc musl-dev
+# cgo（go-sqlite3）需要 gcc。golang:*-alpine 不自带 build-base，这里的 apk add 是必需的：
+# 删掉它 CI 会在 go build 阶段报 C compiler "gcc" not found。
+# 只装 build-base 一个包，运行阶段不装编译器。
+RUN apk add --no-cache --no-progress build-base
 WORKDIR /src
 ENV CGO_ENABLED=1
 

@@ -5,7 +5,7 @@
 # PR 场景只做同样的校验与镜像构建，不推送。
 #
 # 工具链版本与 .prototools 对齐：Go 1.27.3、Bun 1.4.4。
-# cgo（go-sqlite3）需要 gcc，golang 镜像自带 build-base，无需另装。
+# cgo（go-sqlite3）需要 gcc，golang:*-alpine 不自带 build-base，Dockerfile 里必须 apk add build-base。
 # container 流水线依赖 services: docker 提供 docker CLI/daemon，缺失会直接 command not found。
 #
 # 镜像地址 ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
