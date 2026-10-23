@@ -233,7 +233,7 @@ docker run -d --name biodays -p 8080:3000 \
 
 #### CNB 自动构建（CNB Docker 制品库）
 
-推送 `main` 或推送 `v*.*.*` 标签时，`.cnb.yml` 会并行跑两条检查流水线，全部通过后再构建 `linux/amd64` 与 `linux/arm64` 双架构镜像推送到 CNB Docker 制品库：
+推送 `main` 或推送 `v*.*.*` 标签时，`.cnb.yml` 会并行跑两条检查流水线，全部通过后再构建 `linux/amd64` 镜像推送到 CNB Docker 制品库：
 
 - `go`：`go vet ./...`、`go test -race -count=1 ./...`、`govulncheck`
 - `web`：`bun install --frozen-lockfile`、`typecheck`、`lint`

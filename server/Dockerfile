@@ -10,10 +10,14 @@ WORKDIR /src
 ENV CGO_ENABLED=1
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 COPY . .
-RUN go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
 
 FROM alpine:3.22
 

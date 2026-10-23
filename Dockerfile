@@ -2,6 +2,8 @@
 
 # 构建阶段互不依赖，server-build 与 web-build 由 buildkit 并行执行，
 # 整体构建时长 ≈ max(Go 编译, 前端构建) 而不是两者之和。
+#
+# 镜像只出 linux/amd64。单架构下不需要交叉编译工具链，也不会被 qemu 模拟拖慢。
 
 FROM golang:1.27.3-alpine AS server-build
 # cgo（go-sqlite3）需要 gcc。golang:*-alpine 不自带 build-base，这里的 apk add 是必需的：
