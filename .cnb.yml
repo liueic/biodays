@@ -25,19 +25,25 @@
       docker:
         image: golang:1.27.3
         volumes:
+          # runner 可能是 amd64 也可能是 arm64，go-build 缓存与架构强相关，
+          # 混挂会让缓存反复 miss（甚至读到机器码不匹配的条目）。按 GOARCH 分开。
           - /tmp/gomod
-          - /tmp/gocache
+          - /tmp/gocache/$GOARCH
       env:
         CGO_ENABLED: "1"
         GOMODCACHE: /tmp/gomod
-        GOCACHE: /tmp/gocache
+        # 与上面的 volume 必须保持一致，否则缓存写了不用
+        GOCACHE: /tmp/gocache/$GOARCH
       stages:
         - name: vet
           script: cd server && go vet ./...
         - name: test
           script: cd server && go test -race -count=1 ./...
         - name: govulncheck
-          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+          # @latest 不带版本号，Go 不会复用 go.sum 里的模块缓存，每次都要重新下载
+          # x/vuln 及其依赖（x/tools 等）；固定面板版本 + GOFLAGS=-mod=mod 让它落进
+          # /tmp/gomod，第二次构建就基本是纯编译时间了。
+          script: cd server && GOFLAGS=-mod=mod go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
     - name: web
       label:
@@ -96,19 +102,25 @@ main:
       docker:
         image: golang:1.27.3
         volumes:
+          # runner 可能是 amd64 也可能是 arm64，go-build 缓存与架构强相关，
+          # 混挂会让缓存反复 miss（甚至读到机器码不匹配的条目）。按 GOARCH 分开。
           - /tmp/gomod
-          - /tmp/gocache
+          - /tmp/gocache/$GOARCH
       env:
         CGO_ENABLED: "1"
         GOMODCACHE: /tmp/gomod
-        GOCACHE: /tmp/gocache
+        # 与上面的 volume 必须保持一致，否则缓存写了不用
+        GOCACHE: /tmp/gocache/$GOARCH
       stages:
         - name: vet
           script: cd server && go vet ./...
         - name: test
           script: cd server && go test -race -count=1 ./...
         - name: govulncheck
-          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+          # @latest 不带版本号，Go 不会复用 go.sum 里的模块缓存，每次都要重新下载
+          # x/vuln 及其依赖（x/tools 等）；固定面板版本 + GOFLAGS=-mod=mod 让它落进
+          # /tmp/gomod，第二次构建就基本是纯编译时间了。
+          script: cd server && GOFLAGS=-mod=mod go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
     - name: web
       label:
@@ -164,19 +176,25 @@ main:
       docker:
         image: golang:1.27.3
         volumes:
+          # runner 可能是 amd64 也可能是 arm64，go-build 缓存与架构强相关，
+          # 混挂会让缓存反复 miss（甚至读到机器码不匹配的条目）。按 GOARCH 分开。
           - /tmp/gomod
-          - /tmp/gocache
+          - /tmp/gocache/$GOARCH
       env:
         CGO_ENABLED: "1"
         GOMODCACHE: /tmp/gomod
-        GOCACHE: /tmp/gocache
+        # 与上面的 volume 必须保持一致，否则缓存写了不用
+        GOCACHE: /tmp/gocache/$GOARCH
       stages:
         - name: vet
           script: cd server && go vet ./...
         - name: test
           script: cd server && go test -race -count=1 ./...
         - name: govulncheck
-          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+          # @latest 不带版本号，Go 不会复用 go.sum 里的模块缓存，每次都要重新下载
+          # x/vuln 及其依赖（x/tools 等）；固定面板版本 + GOFLAGS=-mod=mod 让它落进
+          # /tmp/gomod，第二次构建就基本是纯编译时间了。
+          script: cd server && GOFLAGS=-mod=mod go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
     - name: web
       label:

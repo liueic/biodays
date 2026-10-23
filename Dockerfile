@@ -3,7 +3,7 @@
 # 构建阶段互不依赖，server-build 与 web-build 由 buildkit 并行执行，
 # 整体构建时长 ≈ max(Go 编译, 前端构建) 而不是两者之和。
 
-FROM golang:1.27.3-alpine AS server-build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS server-build
 # cgo（go-sqlite3）需要 gcc。golang:*-alpine 不自带 build-base，这里的 apk add 是必需的：
 # 删掉它 CI 会在 go build 阶段报 C compiler "gcc" not found。
 # 只装 build-base 一个包，运行阶段不装编译器。
@@ -12,15 +12,25 @@ WORKDIR /src
 ENV CGO_ENABLED=1
 
 COPY server/go.mod server/go.sum ./
-# --mount=type=cache 挂在 buildkit 的持久缓存上（跨构建保留），
-# 依赖没变时 go mod download 直接命中缓存、不再走网络。
+# 构建缓存必须持久化：首次编译 govulncheck 依赖的 golang.org/x/tools 冷编译约 2 分钟，
+# 删掉 --mount=type=cache 每次都要重来。
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go mod download
 
 COPY server/ ./
+# 下面两步都在构建机原生架构上跑（$BUILDPLATFORM），arm64 分支靠 C 交叉编译器产出：
+#   - -arch: 用 amd64 的编译器生成 arm64 机器码（gcc 原生支持，不需要 qemu）
+#   - -s:    musl 交叉的 gcc 不会自动搜索自带 libc，不显式指定会报
+#           cannot find /usr/lib/libc.so（构建机是 glibc）
+#   - pkg-config: go-sqlite3 不依赖 pkg-config，禁掉可以免掉 arm64 分支的 pkg-config 报错
+# 效果：不再用 qemu 模拟跑整个 Go 编译，同时两架构共用一份 go-build 缓存。
+ARG TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=1 GOOS=linux GOARCH=$TARGETARCH \
+    CC="gcc -arch $( [ "$TARGETARCH" = amd64 ] && echo x86_64 || echo aarch64 )-alpine-linux-musl" \
+    CGO_PKG_CONFIG=false \
     go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
 
 FROM oven/bun:1.4.4 AS web-build

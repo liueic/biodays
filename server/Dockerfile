@@ -10,10 +10,15 @@ WORKDIR /src
 ENV CGO_ENABLED=1
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
 
 COPY . .
-RUN go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
+# 只编 linux/amd64 时保持原生编译；多架构构建请走根目录 Dockerfile（那边用 C 交叉编译）。
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays
 
 FROM alpine:3.22
 
