@@ -29,13 +29,16 @@ FROM node:24-alpine
 RUN apk add --no-cache ca-certificates \
     && addgroup -S biodays \
     && adduser -S -G biodays biodays \
-    && mkdir -p /data /app \
+    && mkdir -p /data /app /app/public \
     && chown biodays:biodays /data /app
 
 COPY --from=server-build /out/biodays /usr/local/bin/biodays
 COPY --from=web-build --chown=biodays:biodays /app/web/.next/standalone/ /app/
 COPY --from=web-build --chown=biodays:biodays /app/web/.next/static/ /app/.next/static/
-COPY --from=web-build --chown=biodays:biodays /app/web/public/ /app/public/
+# web/public 是可选的静态资源目录，仓库里还没有它就跳过 COPY；
+# 直接 COPY 会因源路径不存在让整个镜像构建失败（/app/public 已由上面的 mkdir 兜底）。
+# 路径写成 glob 后，目录缺失时 buildkit 会退化成空拷贝而不会报错。
+COPY --from=web-build --chown=biodays:biodays /app/web/public* /app/public/
 COPY --chown=biodays:biodays deploy/launcher.js /app/launcher.js
 
 ENV NODE_ENV=production \
