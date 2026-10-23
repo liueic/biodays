@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@react95/core";
+import { Button } from "@react95/core/Button";
 import { useState } from "react";
 
 import { getRandomStory, type Story } from "@/lib/api";

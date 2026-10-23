@@ -192,6 +192,17 @@ func TestList(t *testing.T) {
 	require.Len(t, body.Data, 2)
 	require.Equal(t, 1, body.Meta.Page)
 	require.NotEmpty(t, body.Data[0].Content)
+	rec = do(t, engine, http.MethodGet, "/api/v1/stories?view=summary&page_size=2", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	summary := decode[struct {
+		Data []map[string]any `json:"data"`
+	}](t, rec)
+	require.Len(t, summary.Data, 2)
+	require.NotEmpty(t, summary.Data[0]["title"])
+	require.NotEmpty(t, summary.Data[0]["tags"])
+	for _, key := range []string{"content", "source", "geek_quote"} {
+		require.NotContains(t, summary.Data[0], key)
+	}
 
 	rec = do(t, engine, http.MethodGet, "/api/v1/stories?tag=仪器极客", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -212,6 +223,7 @@ func TestList(t *testing.T) {
 		"/api/v1/stories?day=5",
 		"/api/v1/stories?page_size=101",
 		"/api/v1/stories?page=0",
+		"/api/v1/stories?view=unknown",
 	} {
 		rec = do(t, engine, http.MethodGet, path, nil)
 		require.Equal(t, http.StatusBadRequest, rec.Code, path)
@@ -236,6 +248,7 @@ func TestGetAndRandom(t *testing.T) {
 	rec = do(t, engine, http.MethodGet, "/api/v1/stories/random?exclude=Q1-01,Q4-02", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "Q4-01", decode[model.StoryDTO](t, rec).ID)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 
 	rec = do(t, engine, http.MethodGet, "/api/v1/stories/random?exclude=Q1-01,Q4-01,Q4-02", nil)
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -261,6 +274,7 @@ func TestTagsAndMeta(t *testing.T) {
 	require.EqualValues(t, 3, meta.Data.Total)
 	require.Equal(t, []string{"Q1", "Q4"}, meta.Data.Quarters)
 	require.Equal(t, "1月 / 10月", meta.Data.Coverage)
+	require.Equal(t, map[int]int64{1: 1, 10: 2}, meta.Data.MonthCounts)
 }
 
 func TestRateLimitAndHealthExemption(t *testing.T) {

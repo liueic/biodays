@@ -1,5 +1,6 @@
-import { Button, Fieldset } from "@react95/core";
-import { FileText } from "@react95/icons";
+import { Button } from "@react95/core/Button";
+import { Fieldset } from "@react95/core/Fieldset";
+import { FileText } from "@react95/icons/FileText";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,7 +15,12 @@ import { formatStoryDate } from "@/lib/date";
 import { SITE_NAME } from "@/lib/site";
 import { safeExternalUrl } from "@/lib/url";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
+
+// Generate a page on first visit, so image builds do not require a running API.
+export async function generateStaticParams() {
+  return [];
+}
 
 type PageProps = { params: Promise<{ id: string }> };
 

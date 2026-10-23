@@ -1,4 +1,4 @@
-import { Frame } from "@react95/core";
+import { Frame } from "@react95/core/Frame";
 import Link from "next/link";
 
 /** Tag chip linking to the archive filtered by this tag. */

@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@react95/core";
+import { Button } from "@react95/core/Button";
 import { useEffect } from "react";
 import { ErrorState } from "@/components/error-state";
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"biodays/server/internal/model"
 	"biodays/server/internal/store"
@@ -19,6 +20,7 @@ type Report struct {
 	Imported    int
 	Skipped     int
 	FailedFiles int
+	Version     string
 }
 
 type inputSource struct {
@@ -51,6 +53,14 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 		return Report{}, fmt.Errorf("no stories_*.json found in %s", dataDir)
 	}
 	sort.Strings(files)
+	// A missing/unreadable file still follows the non-strict importer behavior.
+	version, manifest, fingerprintErr := fingerprint(files, dataDir)
+	if fingerprintErr != nil {
+		// Bundled datasets carry a manifest: changes must refresh it before a build.
+		if _, err := os.Stat(filepath.Join(dataDir, "manifest.json")); !os.IsNotExist(err) {
+			return Report{}, fingerprintErr
+		}
+	}
 
 	report := Report{Files: len(files)}
 	seenIDs := make(map[string]string, 208)
@@ -97,6 +107,15 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 	if err := st.CleanupOrphanTags(ctx); err != nil {
 		return report, fmt.Errorf("cleanup orphan tags: %w", err)
 	}
+	if fingerprintErr == nil && report.Skipped == 0 && report.FailedFiles == 0 && report.Imported > 0 {
+		if manifest != nil && manifest.Total != report.Imported {
+			return report, fmt.Errorf("dataset count differs from manifest: imported=%d expected=%d", report.Imported, manifest.Total)
+		}
+		if err := st.SetDatasetVersion(ctx, version); err != nil {
+			return report, err
+		}
+		report.Version = version
+	}
 	return report, nil
 }
 
@@ -112,6 +131,12 @@ func validate(entry inputStory) []string {
 	}
 	if entry.Day < 1 || entry.Day > 31 {
 		problems = append(problems, fmt.Sprintf("day %d out of range 1-31", entry.Day))
+	}
+	if entry.Month >= 1 && entry.Month <= 12 && entry.Day >= 1 && entry.Day <= 31 && entry.Year > 0 {
+		date := time.Date(entry.Year, time.Month(entry.Month), entry.Day, 0, 0, 0, 0, time.UTC)
+		if int(date.Month()) != entry.Month || date.Day() != entry.Day {
+			problems = append(problems, "invalid calendar date")
+		}
 	}
 	if entry.Year <= 0 {
 		problems = append(problems, "year must be positive")

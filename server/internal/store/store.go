@@ -43,7 +43,7 @@ func Open(path string) (*Store, error) {
 	pool.SetMaxIdleConns(1)
 
 	s := &Store{db: db}
-	if err := s.db.AutoMigrate(&model.Story{}, &model.Tag{}); err != nil {
+	if err := s.db.AutoMigrate(&model.Story{}, &model.Tag{}, &model.Dataset{}); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -84,6 +84,7 @@ type ListFilter struct {
 	Query    string
 	Page     int
 	PageSize int
+	Summary  bool
 }
 
 func (f ListFilter) apply(db *gorm.DB) *gorm.DB {

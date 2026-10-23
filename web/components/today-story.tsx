@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@react95/core";
-import { Bulb } from "@react95/icons";
+import { Button } from "@react95/core/Button";
+import { Bulb } from "@react95/icons/Bulb";
 import Link from "next/link";
 import { useState } from "react";
 

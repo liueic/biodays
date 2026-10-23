@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -104,6 +105,7 @@ type ListParams struct {
 	Query    string
 	Page     int
 	PageSize int
+	Summary  bool
 }
 
 func (s *StoryService) List(ctx context.Context, params ListParams) ([]model.StoryDTO, int64, error) {
@@ -114,6 +116,7 @@ func (s *StoryService) List(ctx context.Context, params ListParams) ([]model.Sto
 		Query:    params.Query,
 		Page:     params.Page,
 		PageSize: params.PageSize,
+		Summary:  params.Summary,
 	})
 	if err != nil {
 		return nil, 0, err
@@ -134,11 +137,25 @@ func (s *StoryService) Tags(ctx context.Context) ([]model.TagCount, error) {
 }
 
 func (s *StoryService) Meta(ctx context.Context) (model.Meta, error) {
-	total, months, err := s.store.Stats(ctx)
+	counts, err := s.store.MonthCounts(ctx)
 	if err != nil {
 		return model.Meta{}, err
 	}
-	return BuildMeta(total, months), nil
+	var total int64
+	months := make([]int, 0, len(counts))
+	for month, count := range counts {
+		months = append(months, month)
+		total += count
+	}
+	sort.Ints(months)
+	version, err := s.store.DatasetVersion(ctx)
+	if err != nil {
+		return model.Meta{}, err
+	}
+	meta := BuildMeta(total, months)
+	meta.MonthCounts = counts
+	meta.DatasetVersion = version
+	return meta, nil
 }
 
 func BuildMeta(total int64, months []int) model.Meta {

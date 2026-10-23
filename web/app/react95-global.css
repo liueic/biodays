@@ -1,0 +1,121 @@
+/* React95 10.0.6 GlobalStyle (MIT), without unused embedded TTF fonts. */
+@layer react95;
+@layer react95.global;
+@layer react95.components;
+@layer react95.composed;
+@layer react95.global {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  html {
+    font-size: 100%;
+  }
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-pixel);
+    font-size: 12px;
+    color: var(--r95-color-materialText);
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+  a {
+    color: var(--r95-color-anchor);
+  }
+  a:visited {
+    color: var(--r95-color-anchorVisited);
+  }
+  ::-webkit-scrollbar {
+    width: var(--r95-space-17);
+    height: var(--r95-space-17);
+  }
+  ::-webkit-scrollbar-track {
+    background-image:
+      linear-gradient(
+        45deg,
+        var(--r95-color-material) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--r95-color-material) 75%
+      ),
+      linear-gradient(
+        45deg,
+        var(--r95-color-material) 25%,
+        transparent 25%,
+        transparent 75%,
+        var(--r95-color-material) 75%
+      );
+    background-color: var(--r95-color-borderLightest);
+    background-size: var(--r95-space-4) var(--r95-space-4);
+    background-position:
+      0 0,
+      var(--r95-space-2) var(--r95-space-2);
+  }
+  ::-webkit-scrollbar-corner {
+    background-color: var(--r95-color-material);
+  }
+  ::-webkit-scrollbar-button:horizontal:increment:start,
+  ::-webkit-scrollbar-button:horizontal:decrement:end,
+  ::-webkit-scrollbar-button:vertical:increment:start,
+  ::-webkit-scrollbar-button:vertical:decrement:end {
+    display: none;
+  }
+  ::-webkit-scrollbar-button:horizontal:decrement {
+    background-image: url(data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjIxIiB3aWR0aD0iMjEiIHZpZXdCb3g9IjAgMCAyMSAyMSIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4KICAgIDxnIHRyYW5zZm9ybT0icm90YXRlKDkwIDEzIDEzKSI+CiAgICAgIDxwb2x5Z29uIGZpbGw9InZhcigtLXI5NS1jb2xvci1tYXRlcmlhbFRleHQpIiBwb2ludHM9IjYsMTAgMjAsMTAgMTMsMTciLz4KICAgIDwvZz4KICA8L3N2Zz4=);
+  }
+  ::-webkit-scrollbar-button:horizontal:increment {
+    background-image: url(data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjIxIiB3aWR0aD0iMjEiIHZpZXdCb3g9IjAgMCAyMSAyMSIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4KICAgIDxnIHRyYW5zZm9ybT0icm90YXRlKDI3MCAxMyAxMykiPgogICAgICA8cG9seWdvbiBmaWxsPSJ2YXIoLS1yOTUtY29sb3ItbWF0ZXJpYWxUZXh0KSIgcG9pbnRzPSI2LDEwIDIwLDEwIDEzLDE3Ii8+CiAgICA8L2c+CiAgPC9zdmc+);
+  }
+  ::-webkit-scrollbar-button:vertical:decrement {
+    background-image: url(data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjIxIiB3aWR0aD0iMjEiIHZpZXdCb3g9IjAgMCAyMSAyMSIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4KICAgIDxnIHRyYW5zZm9ybT0icm90YXRlKDE4MCAxMyAxMykiPgogICAgICA8cG9seWdvbiBmaWxsPSJ2YXIoLS1yOTUtY29sb3ItbWF0ZXJpYWxUZXh0KSIgcG9pbnRzPSI2LDEwIDIwLDEwIDEzLDE3Ii8+CiAgICA8L2c+CiAgPC9zdmc+);
+  }
+  ::-webkit-scrollbar-button:vertical:increment {
+    background-image: url(data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjIxIiB3aWR0aD0iMjEiIHZpZXdCb3g9IjAgMCAyMSAyMSIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4KICAgIDxnIHRyYW5zZm9ybT0icm90YXRlKDAgMTMgMTMpIj4KICAgICAgPHBvbHlnb24gZmlsbD0idmFyKC0tcjk1LWNvbG9yLW1hdGVyaWFsVGV4dCkiIHBvaW50cz0iNiwxMCAyMCwxMCAxMywxNyIvPgogICAgPC9nPgogIDwvc3ZnPg==);
+  }
+  ::-webkit-scrollbar-thumb {
+    box-sizing: border-box;
+    display: inline-block;
+    background: var(--r95-color-material);
+    color: var(--r95-color-materialText);
+    border: 0;
+    box-shadow:
+      -1px -1px 0 0 var(--r95-color-borderDarkest) inset,
+      1px 1px 0 0 var(--r95-color-borderLight) inset,
+      -2px -2px 0 0 var(--r95-color-borderDark) inset,
+      2px 2px 0 0 var(--r95-color-borderLightest) inset;
+  }
+  ::-webkit-scrollbar-button {
+    box-sizing: border-box;
+    background: var(--r95-color-material);
+    color: var(--r95-color-materialText);
+    display: block;
+    outline-offset: calc(var(--r95-space-2) * -1);
+    height: var(--r95-space-17);
+    width: var(--r95-space-17);
+    background-repeat: no-repeat;
+    background-size: 80%;
+    background-position: 0 0;
+    border: 0;
+    box-shadow:
+      -1px -1px 0 0 var(--r95-color-borderDarkest) inset,
+      1px 1px 0 0 var(--r95-color-borderLight) inset,
+      -2px -2px 0 0 var(--r95-color-borderDark) inset,
+      2px 2px 0 0 var(--r95-color-borderLightest) inset;
+  }
+  ::-webkit-scrollbar-button:active,
+  ::-webkit-scrollbar-button:active {
+    background-position: 0 1;
+    border: 0;
+    box-shadow:
+      -1px -1px 0 0 var(--r95-color-borderDarkest) inset,
+      1px 1px 0 0 var(--r95-color-borderLight) inset,
+      -2px -2px 0 0 var(--r95-color-borderDark) inset,
+      2px 2px 0 0 var(--r95-color-borderLightest) inset;
+  }
+}

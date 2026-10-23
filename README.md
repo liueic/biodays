@@ -135,11 +135,11 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | GET | `/healthz` | 存活检查（不计入限流） | 无 |
 | GET | `/readyz` | 就绪检查，含数据库连通性（不计入限流） | 无 |
 | GET | `/api/v1/today` | 今日故事 | `tz`（默认 `+08:00`）、`fallback`（`random` 或 `none`） |
-| GET | `/api/v1/stories` | 分页列表 | `month`、`day`、`tag`、`q`、`page`、`page_size`（上限 100） |
+| GET | `/api/v1/stories` | 分页列表 | `month`、`day`、`tag`、`q`、`page`、`page_size`（上限 100）、`view=full|summary`（默认 full） |
 | GET | `/api/v1/stories/{id}` | 单篇详情（含正文与引用） | 路径参数 `id`（如 `Q1-01`） |
 | GET | `/api/v1/stories/random` | 随机一篇 | `exclude`（逗号分隔排除列表，如 `Q1-01,Q4-02`） |
 | GET | `/api/v1/tags` | 全部标签及关联篇数 | 无 |
-| GET | `/api/v1/meta` | 数据集指标（总篇数、季度/月份覆盖） | 无 |
+| GET | `/api/v1/meta` | 数据集指标（总篇数、月份计数、覆盖、数据版本） | 无 |
 
 调用示例：
 
@@ -169,7 +169,7 @@ curl 'http://localhost:8080/api/v1/today?fallback=none'
 ```
 
 - 常见错误码：`INVALID_PARAM` (400)、`STORY_NOT_FOUND` (404)、`RATE_LIMITED` (429)、`INTERNAL_ERROR` (500)。
-- 缓存策略：所有 GET 成功响应默认携带 `Cache-Control: public, max-age=300`；错误响应携带 `no-store`。
+- 缓存策略：普通 GET 成功响应携带 `Cache-Control: public, max-age=300`；随机故事、健康检查和错误响应携带 `no-store`。`view=summary` 省略正文、来源与 geek_quote，供前端列表使用；详情与默认 full 响应不变。
 
 ---
 
@@ -222,7 +222,46 @@ docker run -d --name biodays -p 127.0.0.1:8080:3000 \
 
 打开同一个入口即可访问：`/`（前端）、`/api/v1/*`（API）、`/swagger/index.html`（文档）、`/readyz`（健康检查）。启动会校验数据库含有故事；空库会明确报错并退出，避免健康检查通过但今日接口持续 404。
 
-更新故事时修改 `data/stories_*.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 只有读取端点，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
+更新故事时修改 `data/stories_*.json` 并刷新 `data/manifest.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 只有读取端点，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
+
+#### 持续更新故事
+
+`data/stories_*.json` 是唯一发布源；`data/manifest.json` 记录各文件数量、总数和 SHA-256 数据版本。不要提交 SQLite。构建时严格校验清单，再生成镜像内数据库；清单过期、数量不符、重复 ID、坏 JSON 或无效日期都会阻止发布。
+
+导出目录可能同时包含整季度、拆分文件和 `raw_sources/`。同步工具递归读取导出 JSON，按 ID 合并完全相同的副本；同 ID 内容不同会报出冲突文件，需选择权威文件单独同步。
+
+```bash
+# 仓库根目录：先查看新增、更新与去重数量
+python3 scripts/stories.py audit /path/to/export/data
+# 更新现有 ID；新 ID 进入 data/stories_imported.json；保留导出中未出现的旧故事
+python3 scripts/stories.py sync /path/to/export/data
+# 如果是直接编辑仓库 JSON，用此命令刷新清单
+python3 scripts/stories.py manifest
+python3 scripts/stories.py check
+python3 -m unittest discover -s scripts -p 'test_*.py'
+(cd server && go test ./internal/seed)
+git diff -- data
+```
+
+确认后提交 `data/` 并推送到 `main`，CNB 会构建和发布新镜像。保留稳定且唯一的故事 ID（不超过 16 字节）；修订同一故事沿用 ID。需要删除故事时，明确从仓库 JSON 删除并刷新清单；同步不会因某次导出不完整而自动删除旧故事。
+
+服务器更新无需挂载目录、手动导入或改数据库权限：
+
+```bash
+docker compose pull app
+docker compose up -d --force-recreate app
+curl -fsS https://your-domain.example/api/v1/meta
+```
+
+将响应的 `data.total` 与 `data.dataset_version` 对照本次提交的清单。两者一致即可确认运行的是该批数据；不一致时检查所用镜像 tag/digest，以及是否仍有旧卷遮住 `/data`。回滚镜像会同时回滚故事数据。
+
+#### 页面资源与缓存
+
+图标使用独立模块入口，避免整包图标进入客户端；任务栏复用本地窗口状态，归档标签支持搜索并每页显示 24 个。归档月份统计由 `/api/v1/meta` 返回，列表只请求 summary 视图；sitemap 分页读取全部故事，没有 1000 篇上限。
+
+字体原始文件及许可证保存在仓库，`bun run dev/build` 自动生成 UI 与故事两个 WOFF2 子集，新增文字会随构建纳入。React95 的经典重置与滚动条保留，去掉未使用的内嵌 TTF。不要把生成的 `web/app/fonts/` 提交到 Git。
+
+Caddy 保持 `encode zstd gzip`。Next 的静态资源继续使用带内容哈希的文件名和长期 immutable 缓存；保留框架生成的 `Vary`，不要用全站 header 规则覆盖 HTML/API 缓存或 `Vary`。随机接口不缓存；今日数据每个请求读取一次，并在该次页面渲染与 metadata 之间复用。
 
 #### Distroless 选型
 
@@ -246,7 +285,7 @@ cp .env.example .env
 docker compose pull
 docker compose up -d
 docker compose logs -f app
-curl http://127.0.0.1:8080/api/v1/meta  # data.total 应为 408
+curl http://127.0.0.1:8080/api/v1/meta  # total / dataset_version 应与 data/manifest.json 一致
 curl http://127.0.0.1:8080/api/v1/today
 ```
 
@@ -299,7 +338,7 @@ bun run start
    - 生产镜像在构建时生成 SQLite，启动时只迁移并校验已有数据；本地开发仍可通过 `BIODAYS_DATA_DIR` 自动导入。
    - 自动建立和更新故事与标签的多对多关联，并主动清理已无任何故事引用的孤儿标签；遇到单条损坏数据记录 warning 日志并跳过，确保整体导入流程稳健不中断；
 3. **单容器运行期渲染**：
-   - 镜像构建从仓库 JSON 生成数据库；`/`、`/archive`、`/story/[id]` 按请求从同容器内的 Go API 读取 SQLite；
+   - 镜像构建从仓库 JSON 生成数据库；首页动态读取今日故事；归档与最近归档复用 5 分钟服务端数据缓存；详情页首次访问生成，随后按 5 分钟 ISR 更新；
    - Next 反向代理 `/api`、`/swagger`、`/healthz`、`/readyz`，浏览器只访问一个端口；`sitemap.xml`/`robots.txt` 也按运行期 `BIODAYS_SITE_URL` 生成；
 4. **CGO SQLite 驱动选型**：
    - 采用 GORM 官方 `gorm.io/driver/sqlite`（底层 `mattn/go-sqlite3`，内置 SQLite amalgamation），取代此前因本机 CGO 工具链故障而使用的纯 Go `glebarez/sqlite`；

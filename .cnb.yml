@@ -15,6 +15,17 @@
 
 "**":
   pull_request:
+    - name: stories
+      label:
+        type: CI
+      docker:
+        image: python:3.14-slim
+      stages:
+        - name: manifest
+          script: python3 scripts/stories.py check
+        - name: sync tests
+          script: python3 -m unittest discover -s scripts -p 'test_*.py'
+
     - name: go
       label:
         type: CI
@@ -58,7 +69,7 @@
           - /root/.bun/install/cache
       stages:
         - name: install
-          script: cd web && bun install --frozen-lockfile
+          script: cd web && bun install --frozen-lockfile && bun run prepare:assets
         - name: typecheck
           script: cd web && bun run typecheck
         - name: lint
@@ -92,6 +103,17 @@
 
 main:
   push:
+    - name: stories
+      label:
+        type: CI
+      docker:
+        image: python:3.14-slim
+      stages:
+        - name: manifest
+          script: python3 scripts/stories.py check
+        - name: sync tests
+          script: python3 -m unittest discover -s scripts -p 'test_*.py'
+
     - name: go
       label:
         type: CI
@@ -135,7 +157,7 @@ main:
           - /root/.bun/install/cache
       stages:
         - name: install
-          script: cd web && bun install --frozen-lockfile
+          script: cd web && bun install --frozen-lockfile && bun run prepare:assets
         - name: typecheck
           script: cd web && bun run typecheck
         - name: lint
@@ -170,6 +192,17 @@ main:
 
 "v*.*.*":
   tag_push:
+    - name: stories
+      label:
+        type: RELEASE
+      docker:
+        image: python:3.14-slim
+      stages:
+        - name: manifest
+          script: python3 scripts/stories.py check
+        - name: sync tests
+          script: python3 -m unittest discover -s scripts -p 'test_*.py'
+
     - name: go
       label:
         type: RELEASE
@@ -205,7 +238,7 @@ main:
           - /root/.bun/install/cache
       stages:
         - name: install
-          script: cd web && bun install --frozen-lockfile
+          script: cd web && bun install --frozen-lockfile && bun run prepare:assets
         - name: typecheck
           script: cd web && bun run typecheck
         - name: lint

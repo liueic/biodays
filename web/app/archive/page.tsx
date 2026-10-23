@@ -1,10 +1,10 @@
-import { Folder } from "@react95/icons";
+import { Folder } from "@react95/icons/Folder";
 import type { Metadata } from "next";
 import { ArchiveExplorer } from "@/components/archive/archive-explorer";
 
 import { ErrorState } from "@/components/error-state";
 import { Window } from "@/components/win/window";
-import { getAllStories, getMeta, getStories, getTags } from "@/lib/api";
+import { getCachedArchive } from "@/lib/server-api";
 import { SITE_NAME } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -29,11 +29,7 @@ export default async function ArchivePage() {
     return <ArchiveOffline />;
   }
 
-  const { initial, tags, all, meta } = data;
-  const monthCounts: Record<number, number> = {};
-  for (const story of all) {
-    monthCounts[story.month] = (monthCounts[story.month] ?? 0) + 1;
-  }
+  const { initial, tags, meta } = data;
   const total = initial.meta.total;
 
   return (
@@ -44,23 +40,14 @@ export default async function ArchivePage() {
         status={[`${total} 个对象`, meta ? `覆盖 ${meta.coverage}` : "覆盖范围未知"]}
       >
         <h1 className="sr-only">归档</h1>
-        <ArchiveExplorer initial={initial} tags={tags} monthCounts={monthCounts} />
+        <ArchiveExplorer initial={initial} tags={tags} monthCounts={meta.month_counts} />
       </Window>
     </main>
   );
 }
 
 async function loadArchive() {
-  const [initial, tags, all, meta] = await Promise.all([
-    getStories({ page: 1, pageSize: 12 }),
-    getTags(),
-    getAllStories(),
-    getMeta().then((response) => response.data),
-  ]);
-  // Total from the filtered list can lag behind the full dataset when the API paginates
-  // differently; the explorer shows both, so keep the larger of the two.
-  const total = Math.max(initial.meta.total, all.length);
-  return { initial: { ...initial, meta: { ...initial.meta, total } }, tags: tags.data, all, meta };
+  return getCachedArchive();
 }
 
 function ArchiveOffline() {

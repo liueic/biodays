@@ -15,6 +15,7 @@ server/coverage.out
 
 web/node_modules/
 web/.next/
+web/app/fonts/
 web/.env*
 web/*.tsbuildinfo
 web/README.md

@@ -26,6 +26,8 @@ web/.env.*.local
 !web/.env.example
 web/.vercel/
 web/*.tsbuildinfo
+web/app/fonts/
+__pycache__/
 
 # Editors
 .idea/

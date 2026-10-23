@@ -1,12 +1,20 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 
 import { Providers } from "@/components/providers";
 import { DesktopTaskbar } from "@/components/win/taskbar";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE, SITE_URL } from "@/lib/site";
 
 import "./globals.css";
-import "@react95/core/GlobalStyle";
+import "./react95-global.css";
 import "@react95/core/themes/win95.css";
+
+const pixelUI = localFont({
+  src: "./fonts/pixel-ui.woff2",
+  variable: "--font-pixel-ui",
+  display: "swap",
+  adjustFontFallback: false,
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -41,7 +49,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" suppressHydrationWarning>
+    <html lang="zh-CN" className={pixelUI.variable} suppressHydrationWarning>
       <body className="flex min-h-svh flex-col">
         <Providers>
           <a href="#main" className="skip-link">

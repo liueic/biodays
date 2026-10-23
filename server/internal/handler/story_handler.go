@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"biodays/server/internal/model"
 	"biodays/server/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -81,6 +82,7 @@ type listQuery struct {
 	Q        string `form:"q" binding:"omitempty,max=100"`
 	Page     *int   `form:"page" binding:"omitempty,min=1"`
 	PageSize *int   `form:"page_size" binding:"omitempty,min=1,max=100"`
+	View     string `form:"view" binding:"omitempty,oneof=full summary"`
 }
 
 // List godoc
@@ -94,6 +96,7 @@ type listQuery struct {
 // @Param        q          query     string  false  "关键词，匹配 title/summary/lab_item"
 // @Param        page       query     int     false  "页码，默认 1"
 // @Param        page_size  query     int     false  "每页数量，默认 20，最大 100"
+// @Param        view       query     string  false  "summary 不含正文和来源，适合列表；默认 full 保持兼容" Enums(full, summary)
 // @Success      200        {object}  StoryListResponse
 // @Failure      400        {object}  ErrorResponse
 // @Failure      429        {object}  ErrorResponse
@@ -125,12 +128,21 @@ func (h *StoryHandler) List(c *gin.Context) {
 		Query:    strings.TrimSpace(query.Q),
 		Page:     page,
 		PageSize: pageSize,
+		Summary:  query.View == "summary",
 	})
 	if err != nil {
 		internalError(c, h.logger, err)
 		return
 	}
 
+	if query.View == "summary" {
+		summaries := make([]model.StorySummaryDTO, 0, len(stories))
+		for _, story := range stories {
+			summaries = append(summaries, story.ToSummary())
+		}
+		c.JSON(http.StatusOK, StorySummaryListResponse{Data: summaries, Meta: ListMeta{Total: total, Page: page, PageSize: pageSize}})
+		return
+	}
 	c.JSON(http.StatusOK, StoryListResponse{
 		Data: stories,
 		Meta: ListMeta{Total: total, Page: page, PageSize: pageSize},
@@ -175,6 +187,7 @@ func (h *StoryHandler) Get(c *gin.Context) {
 // @Failure      500      {object}  ErrorResponse
 // @Router       /api/v1/stories/random [get]
 func (h *StoryHandler) Random(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	exclude, err := parseExclude(c.Query("exclude"))
 	if err != nil {
 		fail(c, http.StatusBadRequest, CodeInvalidParam, err.Error())

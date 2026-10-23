@@ -1,17 +1,20 @@
 "use client";
 
-import { Button, Frame, TitleBar } from "@react95/core";
-import { FileText, Folder } from "@react95/icons";
+import { Button } from "@react95/core/Button";
+import { Frame } from "@react95/core/Frame";
+import { TitleBar } from "@react95/core/TitleBar";
+import { FileText } from "@react95/icons/FileText";
+import { Folder } from "@react95/icons/Folder";
 import Link from "next/link";
 
 import { useWindowFrame } from "@/components/win/use-window-frame";
 import { RECENT_WINDOW } from "@/components/win/window-store";
-import type { Story } from "@/lib/api";
+import type { StorySummary } from "@/lib/api";
 import { formatMonthDay } from "@/lib/date";
 import { cn } from "@/lib/utils";
 
 type RecentWindowProps = {
-  stories: Story[];
+  stories: StorySummary[];
   className?: string;
 };
 

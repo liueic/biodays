@@ -1,0 +1,14 @@
+{
+  "version": "sha256:cbde842c5b629ad59b8a7e1f6549067d9f49a175ec4985ffb4c4ad5ac7af08b1",
+  "total": 408,
+  "files": {
+    "stories_cluster_1_biochem_metabolism.json": 50,
+    "stories_cluster_2_cloning_genetics.json": 50,
+    "stories_cluster_3_instruments_biophysics.json": 50,
+    "stories_cluster_4_immunology_microbiology.json": 50,
+    "stories_q1.json": 52,
+    "stories_q2.json": 52,
+    "stories_q3.json": 52,
+    "stories_q4.json": 52
+  }
+}

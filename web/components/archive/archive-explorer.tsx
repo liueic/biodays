@@ -1,16 +1,21 @@
 "use client";
 
-import { Button, Dropdown, Frame, Input, ProgressBar, Tree } from "@react95/core";
-import { Folder, FolderOpen } from "@react95/icons";
+import { Button } from "@react95/core/Button";
+import { Dropdown } from "@react95/core/Dropdown";
+import { Frame } from "@react95/core/Frame";
+import { Input } from "@react95/core/Input";
+import { ProgressBar } from "@react95/core/ProgressBar";
+import { Folder } from "@react95/icons/Folder";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { StoryRow } from "@/components/archive/story-list-item";
 import { ErrorState } from "@/components/error-state";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { getStories, type Story, type StoryList, type TagCount } from "@/lib/api";
+import { getStories, type StoryList, type StorySummary, type TagCount } from "@/lib/api";
 
 const PAGE_SIZE = 12;
+const TAG_PAGE_SIZE = 24;
 const ALL_MONTHS = "全部月份";
 
 type ArchiveExplorerProps = {
@@ -30,6 +35,17 @@ export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: Archive
   const tags = asArray(rawTags);
   const initialTotal = initial.meta?.total ?? 0;
 
+  const [tagSearch, setTagSearch] = useState("");
+  const [tagPage, setTagPage] = useState(1);
+  const filteredTags = useMemo(
+    () =>
+      tags.filter((item) =>
+        item.name.toLocaleLowerCase().includes(tagSearch.trim().toLocaleLowerCase()),
+      ),
+    [tags, tagSearch],
+  );
+  const tagPages = Math.max(1, Math.ceil(filteredTags.length / TAG_PAGE_SIZE));
+  const visibleTags = filteredTags.slice((tagPage - 1) * TAG_PAGE_SIZE, tagPage * TAG_PAGE_SIZE);
   const [month, setMonth] = useState<number | null>(null);
   const [tag, setTag] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -68,7 +84,7 @@ export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: Archive
   });
 
   const stories = asArray(query.data?.data).filter(
-    (story): story is Story => story != null && typeof story === "object",
+    (story): story is StorySummary => story != null && typeof story === "object",
   );
   const total = query.data?.meta.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -137,29 +153,63 @@ export function ArchiveExplorer({ initial, tags: rawTags, monthCounts }: Archive
           bgColor="$inputBackground"
           className="max-h-[420px] overflow-auto p-1"
         >
-          <Tree
-            aria-label="按标签筛选"
-            root={{
-              id: -1,
-              label: "标签",
-              icon: <FolderOpen variant="16x16_4" aria-hidden />,
-              onClick: () => selectTag(null),
+          <label htmlFor="tag-search">筛选标签</label>
+          <Input
+            id="tag-search"
+            type="search"
+            value={tagSearch}
+            className="my-1 w-full"
+            placeholder="搜索全部标签"
+            onChange={(event) => {
+              setTagSearch(event.target.value);
+              setTagPage(1);
             }}
-            data={[
-              {
-                id: 0,
-                label: `全部 (${initialTotal})`,
-                icon: <Folder variant="16x16_4" aria-hidden />,
-                onClick: () => selectTag(null),
-              },
-              ...tags.map((item, index) => ({
-                id: index + 1,
-                label: `${item.name} (${item.count})`,
-                icon: <Folder variant="16x16_4" aria-hidden />,
-                onClick: () => selectTag(item.name),
-              })),
-            ]}
           />
+          <button
+            type="button"
+            className="menu-item block w-full text-left"
+            aria-pressed={tag === null}
+            onClick={() => selectTag(null)}
+          >
+            全部 ({initialTotal})
+          </button>
+          <ul aria-label="按标签筛选">
+            {visibleTags.map((item) => (
+              <li key={item.name}>
+                <button
+                  type="button"
+                  className="menu-item flex w-full items-start gap-1 text-left"
+                  aria-pressed={tag === item.name}
+                  onClick={() => selectTag(item.name)}
+                >
+                  <Folder variant="16x16_4" className="shrink-0" aria-hidden />
+                  <span>
+                    {item.name} ({item.count})
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {filteredTags.length === 0 && <p className="p-2">没有匹配的标签</p>}
+          <nav aria-label="标签分页" className="mt-2 flex items-center justify-between gap-1">
+            <Button
+              aria-label="上一页标签"
+              disabled={tagPage <= 1}
+              onClick={() => setTagPage(tagPage - 1)}
+            >
+              ‹
+            </Button>
+            <span aria-live="polite">
+              {tagPage} / {tagPages}
+            </span>
+            <Button
+              aria-label="下一页标签"
+              disabled={tagPage >= tagPages}
+              onClick={() => setTagPage(tagPage + 1)}
+            >
+              ›
+            </Button>
+          </nav>
         </Frame>
 
         <div ref={topRef} className="min-w-0 scroll-mt-2">

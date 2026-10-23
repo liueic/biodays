@@ -1,5 +1,5 @@
-import { Fieldset } from "@react95/core";
-import { HelpBook } from "@react95/icons";
+import { Fieldset } from "@react95/core/Fieldset";
+import { HelpBook } from "@react95/icons/HelpBook";
 import type { Metadata } from "next";
 import { Window } from "@/components/win/window";
 import { getMeta } from "@/lib/api";
@@ -71,8 +71,7 @@ export default async function AboutPage() {
       >
         <h1 className="text-base font-bold">biodays</h1>
         <p className="reading mt-2">
-          “实验室科学史上的今天”：每天一则发生在该月该日的实验室故事，外加一句极客金句，
-          面向生物学相关专业的学生与从业者。
+          “实验室科学史上的今天”：每天一则发生在该月该日的实验室故事，或者是一些好玩的生物学小知识。
         </p>
 
         <Fieldset legend="每天怎么选故事" className="mt-5">

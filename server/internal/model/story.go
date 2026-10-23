@@ -50,10 +50,34 @@ type TagCount struct {
 	Count int64  `json:"count" example:"8"`
 }
 
+// Dataset is written by the seed command and travels with the built SQLite file.
+type Dataset struct {
+	ID      uint   `gorm:"primaryKey"`
+	Version string `gorm:"not null"`
+}
+
+type StorySummaryDTO struct {
+	ID      string   `json:"id"`
+	Month   int      `json:"month"`
+	Day     int      `json:"day"`
+	Year    int      `json:"year"`
+	Title   string   `json:"title"`
+	LabItem string   `json:"lab_item"`
+	Tags    []string `json:"tags"`
+	Summary string   `json:"summary"`
+}
+
+func (s StoryDTO) ToSummary() StorySummaryDTO {
+	return StorySummaryDTO{ID: s.ID, Month: s.Month, Day: s.Day, Year: s.Year,
+		Title: s.Title, LabItem: s.LabItem, Tags: s.Tags, Summary: s.Summary}
+}
+
 type Meta struct {
-	Total    int64    `json:"total" example:"104"`
-	Quarters []string `json:"quarters" example:"Q1,Q4"`
-	Coverage string   `json:"coverage" example:"1-3月 / 10-12月"`
+	Total          int64         `json:"total" example:"104"`
+	Quarters       []string      `json:"quarters" example:"Q1,Q4"`
+	Coverage       string        `json:"coverage" example:"1-3月 / 10-12月"`
+	MonthCounts    map[int]int64 `json:"month_counts"`
+	DatasetVersion string        `json:"dataset_version,omitempty"`
 }
 
 func (s Story) ToDTO() StoryDTO {

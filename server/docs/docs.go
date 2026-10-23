@@ -93,6 +93,16 @@ const docTemplate = `{
                         "description": "每页数量，默认 20，最大 100",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "full",
+                            "summary"
+                        ],
+                        "type": "string",
+                        "description": "summary 不含正文和来源，适合列表；默认 full 保持兼容",
+                        "name": "view",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -472,6 +482,16 @@ const docTemplate = `{
                 "coverage": {
                     "type": "string",
                     "example": "1-3月 / 10-12月"
+                },
+                "dataset_version": {
+                    "type": "string"
+                },
+                "month_counts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
                 },
                 "quarters": {
                     "type": "array",

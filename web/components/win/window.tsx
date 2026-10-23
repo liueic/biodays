@@ -1,7 +1,9 @@
 "use client";
 
-import { Button, Frame, TitleBar } from "@react95/core";
-import { Globe } from "@react95/icons";
+import { Button } from "@react95/core/Button";
+import { Frame } from "@react95/core/Frame";
+import { TitleBar } from "@react95/core/TitleBar";
+import { Globe } from "@react95/icons/Globe";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactElement, ReactNode } from "react";

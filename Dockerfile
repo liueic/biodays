@@ -27,6 +27,7 @@ COPY web/package.json web/bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 COPY web/ ./
+COPY data/ /app/data/
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_BIODAYS_DOCS_URL=/swagger/index.html
 ARG BIODAYS_SITE_URL=http://localhost:8080

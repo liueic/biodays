@@ -1,5 +1,5 @@
-import { Frame } from "@react95/core";
-import { Bulb } from "@react95/icons";
+import { Frame } from "@react95/core/Frame";
+import { Bulb } from "@react95/icons/Bulb";
 
 import { cn } from "@/lib/utils";
 

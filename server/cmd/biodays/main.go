@@ -193,7 +193,7 @@ func runSeed(args []string) {
 		logger.Error("strict seed failed", "imported", report.Imported, "skipped", report.Skipped, "failed_files", report.FailedFiles)
 		os.Exit(1)
 	}
-	fmt.Printf("imported=%d skipped=%d files=%d failed_files=%d\n", report.Imported, report.Skipped, report.Files, report.FailedFiles)
+	fmt.Printf("imported=%d skipped=%d files=%d failed_files=%d version=%s\n", report.Imported, report.Skipped, report.Files, report.FailedFiles, report.Version)
 }
 
 func migrate() {

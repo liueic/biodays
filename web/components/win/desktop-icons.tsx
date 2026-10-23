@@ -1,6 +1,10 @@
 "use client";
 
-import { FileFind, FileText, Folder, HelpBook, Star } from "@react95/icons";
+import { FileFind } from "@react95/icons/FileFind";
+import { FileText } from "@react95/icons/FileText";
+import { Folder } from "@react95/icons/Folder";
+import { HelpBook } from "@react95/icons/HelpBook";
+import { Star } from "@react95/icons/Star";
 import { useRouter } from "next/navigation";
 import { type ReactElement, useState } from "react";
 

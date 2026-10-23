@@ -24,7 +24,7 @@ export type TodayResponse = {
 };
 
 export type StoryListResponse = {
-  data: Story[];
+  data: StorySummary[];
   meta: { total: number; page: number; page_size: number };
 };
 
@@ -32,7 +32,7 @@ export type TagCount = { name: string; count: number };
 
 /** Shape returned by /api/v1/stories, after making sure the lists really are arrays. */
 export type StoryList = {
-  data: Story[];
+  data: StorySummary[];
   meta: { total: number; page: number; page_size: number };
 };
 
@@ -40,7 +40,11 @@ export type DatasetMeta = {
   total: number;
   quarters: string[];
   coverage: string;
+  month_counts: Record<number, number>;
+  dataset_version?: string;
 };
+
+export type StorySummary = Omit<Story, "content" | "source" | "geek_quote">;
 
 type ApiErrorPayload = {
   error?: { code?: string; message?: string };
@@ -87,7 +91,9 @@ async function request<T>(
   const init: NextFetchInit = {
     headers: { Accept: "application/json" },
   };
-  if (isServer) {
+  if (path === "/stories/random" || path === "/today") {
+    init.cache = "no-store";
+  } else if (isServer) {
     init.next = { revalidate };
   }
 
@@ -137,6 +143,7 @@ export async function getStories(query: StoryQuery = {}): Promise<StoryList> {
     q: query.q,
     page: query.page ?? 1,
     page_size: query.pageSize ?? 20,
+    view: "summary",
   });
   const data = Array.isArray(payload?.data) ? payload.data : [];
   const total = payload?.meta?.total;
@@ -169,12 +176,13 @@ export function getMeta() {
   return request<{ data: DatasetMeta }>("/meta");
 }
 
-export async function getAllStories(): Promise<Story[]> {
+export async function getAllStories(): Promise<StorySummary[]> {
   const first = await getStories({ page: 1, pageSize: 100 });
   const stories = [...first.data];
   const totalPages = Math.ceil(first.meta.total / 100);
-  for (let page = 2; page <= totalPages && page <= 10; page++) {
+  for (let page = 2; page <= totalPages; page++) {
     const next = await getStories({ page, pageSize: 100 });
+    if (next.data.length === 0) throw new Error("Incomplete story pagination");
     stories.push(...next.data);
   }
   return stories;

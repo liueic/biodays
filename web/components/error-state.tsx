@@ -1,5 +1,7 @@
-import { Button, Frame, TitleBar } from "@react95/core";
-import { User2 } from "@react95/icons";
+import { Button } from "@react95/core/Button";
+import { Frame } from "@react95/core/Frame";
+import { TitleBar } from "@react95/core/TitleBar";
+import { User2 } from "@react95/icons/User2";
 import Link from "next/link";
 
 type ErrorStateProps = {

@@ -45,6 +45,11 @@ type StoryListResponse struct {
 	Meta ListMeta         `json:"meta"`
 }
 
+type StorySummaryListResponse struct {
+	Data []model.StorySummaryDTO `json:"data"`
+	Meta ListMeta                `json:"meta"`
+}
+
 type TagsResponse struct {
 	Data []model.TagCount `json:"data"`
 }

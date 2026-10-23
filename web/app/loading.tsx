@@ -1,4 +1,4 @@
-import { ProgressBar } from "@react95/core";
+import { ProgressBar } from "@react95/core/ProgressBar";
 
 export default function Loading() {
   return (

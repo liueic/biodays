@@ -4,7 +4,7 @@
     "enabled": false
   },
   "files": {
-    "includes": ["**", "!**/.next", "!**/node_modules", "!**/next-env.d.ts"]
+    "includes": ["**", "!**/.next", "!**/node_modules", "!**/app/fonts", "!**/next-env.d.ts"]
   },
   "formatter": {
     "enabled": true,

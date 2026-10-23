@@ -2,8 +2,10 @@ package seed_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -21,8 +23,13 @@ func TestBundledDataset(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	report, err := seed.Run(context.Background(), st, "../../../data", logger)
 	require.NoError(t, err)
-	require.Equal(t, 8, report.Files)
-	require.Equal(t, 408, report.Imported)
+	raw, err := os.ReadFile("../../../data/manifest.json")
+	require.NoError(t, err)
+	var manifest seed.Manifest
+	require.NoError(t, json.Unmarshal(raw, &manifest))
+	require.Equal(t, len(manifest.Files), report.Files)
+	require.Equal(t, manifest.Total, report.Imported)
+	require.Equal(t, manifest.Version, report.Version)
 	require.Zero(t, report.Skipped)
 	require.Zero(t, report.FailedFiles)
 	total, months, err := st.Stats(context.Background())
@@ -38,4 +45,12 @@ func TestBundledDataset(t *testing.T) {
 	story, _, err := service.NewStoryService(st).Today(context.Background(), "+08:00", service.FallbackRandom)
 	require.NoError(t, err)
 	require.NotEmpty(t, story.ID)
+	meta, err := service.NewStoryService(st).Meta(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, manifest.Version, meta.DatasetVersion)
+	var counted int64
+	for _, count := range meta.MonthCounts {
+		counted += count
+	}
+	require.EqualValues(t, manifest.Total, counted)
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { type ReactElement, useSyncExternalStore } from "react";
 
 /**
  * Which desktop windows the user has closed. A closed window is hidden (and leaves the
@@ -16,6 +16,11 @@ const STORAGE_KEY = "biodays.closed-windows";
 const listeners = new Set<() => void>();
 const closed = new Set<string>(readClosed());
 let snapshot: ReadonlySet<string> = new Set(closed);
+type DesktopWindow = { id: string; title: string; icon: ReactElement; minimized: boolean };
+const windows = new Map<string, DesktopWindow>();
+let activeWindow: string | null = null;
+const serverWindows = { windows: [] as DesktopWindow[], activeWindow: null as string | null };
+let windowSnapshot = serverWindows;
 
 function readClosed(): string[] {
   if (typeof window === "undefined") return [];
@@ -41,6 +46,7 @@ function persist() {
 
 function emit() {
   snapshot = new Set(closed);
+  windowSnapshot = { windows: [...windows.values()], activeWindow };
   persist();
   for (const listener of listeners) listener();
 }
@@ -62,6 +68,58 @@ export function closeWindow(id: string) {
 
 export function openWindow(id: string) {
   if (closed.delete(id)) emit();
+  else {
+    const item = windows.get(id);
+    if (!item) return;
+    windows.set(id, { ...item, minimized: false });
+    activeWindow = id;
+    emit();
+  }
+}
+
+export function registerWindow(id: string, title: string, icon: ReactElement) {
+  windows.set(id, { id, title, icon, minimized: false });
+  activeWindow = id;
+  emit();
+  return () => {
+    windows.delete(id);
+    if (activeWindow === id) activeWindow = null;
+    emit();
+  };
+}
+
+export function focusWindow(id: string) {
+  if (activeWindow !== id) {
+    activeWindow = id;
+    emit();
+  }
+}
+
+export function minimizeWindow(id: string) {
+  const item = windows.get(id);
+  if (!item) return;
+  windows.set(id, { ...item, minimized: true });
+  if (activeWindow === id) activeWindow = null;
+  emit();
+}
+
+export function toggleWindow(id: string) {
+  const item = windows.get(id);
+  if (!item) return;
+  if (activeWindow === id && !item.minimized) minimizeWindow(id);
+  else {
+    windows.set(id, { ...item, minimized: false });
+    activeWindow = id;
+    emit();
+  }
+}
+
+export function useWindows() {
+  return useSyncExternalStore(
+    subscribe,
+    () => windowSnapshot,
+    () => serverWindows,
+  );
 }
 
 export function useIsClosed(id: string) {

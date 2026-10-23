@@ -1,6 +1,6 @@
 "use client";
 
-import { Bulb } from "@react95/icons";
+import { Bulb } from "@react95/icons/Bulb";
 
 import { ErrorState } from "@/components/error-state";
 import { TodayStory } from "@/components/today-story";
@@ -8,12 +8,12 @@ import { DesktopIcons } from "@/components/win/desktop-icons";
 import { RecentWindow } from "@/components/win/recent-window";
 import { Window } from "@/components/win/window";
 import { openWindow, RECENT_WINDOW, useIsClosed } from "@/components/win/window-store";
-import type { Story, TodayResponse } from "@/lib/api";
+import type { StorySummary, TodayResponse } from "@/lib/api";
 import type { TodayStamp } from "@/lib/date";
 
 type HomeDesktopProps = {
   today: TodayResponse | null;
-  recent: Story[];
+  recent: StorySummary[];
   stamp: TodayStamp;
 };
 

@@ -39,7 +39,11 @@ func (s *Store) List(ctx context.Context, filter ListFilter) ([]model.Story, int
 	}
 
 	var stories []model.Story
-	err := preloadTags(filter.apply(s.db.WithContext(ctx).Model(&model.Story{}))).
+	query := filter.apply(s.db.WithContext(ctx).Model(&model.Story{}))
+	if filter.Summary {
+		query = query.Select("stories.id", "stories.month", "stories.day", "stories.year", "stories.title", "stories.lab_item", "stories.summary")
+	}
+	err := preloadTags(query).
 		Order("stories.month ASC, stories.day ASC, stories.year ASC, stories.id ASC").
 		Offset((filter.Page - 1) * filter.PageSize).
 		Limit(filter.PageSize).
@@ -95,6 +99,33 @@ func (s *Store) Stats(ctx context.Context) (int64, []int, error) {
 		return 0, nil, err
 	}
 	return total, months, nil
+}
+
+func (s *Store) MonthCounts(ctx context.Context) (map[int]int64, error) {
+	var rows []struct {
+		Month int
+		Count int64
+	}
+	err := s.db.WithContext(ctx).Model(&model.Story{}).
+		Select("month, COUNT(*) AS count").Group("month").Scan(&rows).Error
+	counts := make(map[int]int64, len(rows))
+	for _, row := range rows {
+		counts[row.Month] = row.Count
+	}
+	return counts, err
+}
+
+func (s *Store) SetDatasetVersion(ctx context.Context, version string) error {
+	return s.db.WithContext(ctx).Save(&model.Dataset{ID: 1, Version: version}).Error
+}
+
+func (s *Store) DatasetVersion(ctx context.Context) (string, error) {
+	var dataset model.Dataset
+	err := s.db.WithContext(ctx).First(&dataset, 1).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return dataset.Version, err
 }
 
 func (s *Store) Upsert(ctx context.Context, story *model.Story, tagNames []string) error {

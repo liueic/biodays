@@ -1,11 +1,11 @@
-import { FileText } from "@react95/icons";
+import { FileText } from "@react95/icons/FileText";
 import Link from "next/link";
 
-import type { Story } from "@/lib/api";
+import type { StorySummary } from "@/lib/api";
 import { formatMonthDay } from "@/lib/date";
 
 /** One row of the explorer "details" view. */
-export function StoryRow({ story }: { story: Story }) {
+export function StoryRow({ story }: { story: StorySummary }) {
   const tags = Array.isArray(story.tags) ? story.tags : [];
   return (
     <tr className="group align-top hover:bg-[#000080] hover:text-white">

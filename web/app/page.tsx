@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 
 import { HomeDesktop } from "@/components/home-desktop";
-import { getStories, getToday, type Story } from "@/lib/api";
 import { getTodayStamp } from "@/lib/date";
+import { getCachedRecent, getRequestToday } from "@/lib/server-api";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
   try {
-    const today = await getToday();
+    const today = await getRequestToday();
     return {
       title: today.data.title,
       description: today.data.summary,
@@ -31,22 +31,11 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-const RECENT_PAGE_SIZE = 5;
-
-/** Latest stories by archive order (the list sorts ascending by month/day, so take the last page). */
-async function getRecentStories(): Promise<Story[]> {
-  const first = await getStories({ page: 1, pageSize: RECENT_PAGE_SIZE });
-  const totalPages = Math.ceil(first.meta.total / RECENT_PAGE_SIZE);
-  const last =
-    totalPages > 1 ? await getStories({ page: totalPages, pageSize: RECENT_PAGE_SIZE }) : first;
-  return [...last.data].reverse();
-}
-
 export default async function HomePage() {
   const stamp = getTodayStamp();
   const [today, recent] = await Promise.all([
-    getToday().catch(() => null),
-    getRecentStories().catch(() => [] as Story[]),
+    getRequestToday().catch(() => null),
+    getCachedRecent().catch(() => []),
   ]);
 
   return <HomeDesktop today={today} recent={recent} stamp={stamp} />;

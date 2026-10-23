@@ -71,6 +71,13 @@ definitions:
       coverage:
         example: 1-3月 / 10-12月
         type: string
+      dataset_version:
+        type: string
+      month_counts:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
       quarters:
         example:
         - Q1
@@ -186,6 +193,13 @@ paths:
         in: query
         name: page_size
         type: integer
+      - description: summary 不含正文和来源，适合列表；默认 full 保持兼容
+        enum:
+        - full
+        - summary
+        in: query
+        name: view
+        type: string
       produces:
       - application/json
       responses:
