@@ -2,7 +2,7 @@ name: biodays
 
 services:
   app:
-    image: ${BIODAYS_IMAGE:-ghcr.io/liueic/biodays:latest}
+    image: ${BIODAYS_IMAGE:-docker.cnb.cool/ciallo.cv/biodays:latest}
     restart: unless-stopped
     ports:
       - "${BIODAYS_HTTP_PORT:-8080}:3000"

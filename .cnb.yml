@@ -1,0 +1,200 @@
+# biodays CI —— 由 GitHub Actions（.github/workflows/container.yml）迁移而来
+#
+# push main / 打 v*.*.* tag 时，go、web 两条流水线并行执行，全部通过后 container
+# 构建 linux/amd64,linux/arm64 双架构镜像并推送到 CNB Docker 制品库。
+# PR 场景只做同样的校验与镜像构建，不推送。
+#
+# 工具链版本与 .prototools 对齐：Go 1.27.3、Bun 1.4.4。
+# cgo（go-sqlite3）需要 gcc，golang 镜像自带 build-base，无需另装。
+#
+# 镜像地址 ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+#   push main  -> latest / main / sha-<短哈希>
+#   tag v1.2.3 -> 1.2.3 / 1.2 / latest
+#   PR         -> 只构建，不推送
+
+"**":
+  pull_request:
+    - name: go
+      label:
+        type: CI
+      lock:
+        key: ci-go
+        cancel-in-progress: true
+        wait: true
+      docker:
+        image: golang:1.27.3
+        volumes:
+          - /tmp/gomod
+          - /tmp/gocache
+      env:
+        CGO_ENABLED: "1"
+        GOMODCACHE: /tmp/gomod
+        GOCACHE: /tmp/gocache
+      stages:
+        - name: vet
+          script: cd server && go vet ./...
+        - name: test
+          script: cd server && go test -race -count=1 ./...
+        - name: govulncheck
+          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+    - name: web
+      label:
+        type: CI
+      lock:
+        key: ci-web
+        cancel-in-progress: true
+        wait: true
+      docker:
+        image: oven/bun:1.4.4
+        volumes:
+          - /root/.bun/install/cache
+      stages:
+        - name: install
+          script: cd web && bun install --frozen-lockfile
+        - name: typecheck
+          script: cd web && bun run typecheck
+        - name: lint
+          script: cd web && bun run lint
+
+    - name: container
+      label:
+        type: CI
+      lock:
+        key: ci-container
+        cancel-in-progress: true
+        wait: true
+      services:
+        - docker
+      stages:
+        - name: build
+          script: |
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              --output type=cacheonly \
+              --provenance=false --sbom=false \
+              .
+
+main:
+  push:
+    - name: go
+      label:
+        type: CI
+      lock:
+        key: ci-go
+        cancel-in-progress: true
+        wait: true
+      docker:
+        image: golang:1.27.3
+        volumes:
+          - /tmp/gomod
+          - /tmp/gocache
+      env:
+        CGO_ENABLED: "1"
+        GOMODCACHE: /tmp/gomod
+        GOCACHE: /tmp/gocache
+      stages:
+        - name: vet
+          script: cd server && go vet ./...
+        - name: test
+          script: cd server && go test -race -count=1 ./...
+        - name: govulncheck
+          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+    - name: web
+      label:
+        type: CI
+      lock:
+        key: ci-web
+        cancel-in-progress: true
+        wait: true
+      docker:
+        image: oven/bun:1.4.4
+        volumes:
+          - /root/.bun/install/cache
+      stages:
+        - name: install
+          script: cd web && bun install --frozen-lockfile
+        - name: typecheck
+          script: cd web && bun run typecheck
+        - name: lint
+          script: cd web && bun run lint
+
+    - name: container
+      label:
+        type: CI
+      lock:
+        key: ci-container
+        cancel-in-progress: true
+        wait: true
+      env:
+        IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
+      stages:
+        - name: build and push
+          script: |
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              -t $IMAGE:latest \
+              -t $IMAGE:main \
+              -t $IMAGE:sha-$CNB_COMMIT_SHORT \
+              --provenance=false --sbom=false \
+              --push \
+              .
+
+"v*.*.*":
+  tag_push:
+    - name: go
+      label:
+        type: RELEASE
+      docker:
+        image: golang:1.27.3
+        volumes:
+          - /tmp/gomod
+          - /tmp/gocache
+      env:
+        CGO_ENABLED: "1"
+        GOMODCACHE: /tmp/gomod
+        GOCACHE: /tmp/gocache
+      stages:
+        - name: vet
+          script: cd server && go vet ./...
+        - name: test
+          script: cd server && go test -race -count=1 ./...
+        - name: govulncheck
+          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+    - name: web
+      label:
+        type: RELEASE
+      docker:
+        image: oven/bun:1.4.4
+        volumes:
+          - /root/.bun/install/cache
+      stages:
+        - name: install
+          script: cd web && bun install --frozen-lockfile
+        - name: typecheck
+          script: cd web && bun run typecheck
+        - name: lint
+          script: cd web && bun run lint
+
+    - name: container
+      label:
+        type: RELEASE
+      env:
+        IMAGE: $CNB_DOCKER_REGISTRY/$CNB_REPO_SLUG_LOWERCASE
+      stages:
+        - name: build and push
+          script: |
+            # v1.2.3 -> 1.2.3 与 1.2
+            VERSION=${CNB_BRANCH#v}
+            MINOR=${VERSION%.*}
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              -t $IMAGE:$VERSION \
+              -t $IMAGE:$MINOR \
+              -t $IMAGE:latest \
+              --provenance=false --sbom=false \
+              --push \
+              .
+
