@@ -30,6 +30,12 @@ export type StoryListResponse = {
 
 export type TagCount = { name: string; count: number };
 
+/** Shape returned by /api/v1/stories, after making sure the lists really are arrays. */
+export type StoryList = {
+  data: Story[];
+  meta: { total: number; page: number; page_size: number };
+};
+
 export type DatasetMeta = {
   total: number;
   quarters: string[];
@@ -118,8 +124,13 @@ export type StoryQuery = {
   pageSize?: number;
 };
 
-export function getStories(query: StoryQuery = {}) {
-  return request<StoryListResponse>("/stories", {
+/**
+ * The server is the source of truth, but a list response that arrives without `data`
+ * (null/undefined instead of []) would reach `.map()` in render and blank the page,
+ * so normalise the envelope here — this is the boundary where the data enters React.
+ */
+export async function getStories(query: StoryQuery = {}): Promise<StoryList> {
+  const payload = await request<Partial<StoryListResponse> | null>("/stories", {
     month: query.month,
     day: query.day,
     tag: query.tag,
@@ -127,6 +138,16 @@ export function getStories(query: StoryQuery = {}) {
     page: query.page ?? 1,
     page_size: query.pageSize ?? 20,
   });
+  const data = Array.isArray(payload?.data) ? payload.data : [];
+  const total = payload?.meta?.total;
+  return {
+    data,
+    meta: {
+      total: typeof total === "number" ? total : data.length,
+      page: payload?.meta?.page ?? query.page ?? 1,
+      page_size: payload?.meta?.page_size ?? query.pageSize ?? 20,
+    },
+  };
 }
 
 export function getStory(id: string) {
@@ -139,8 +160,9 @@ export function getRandomStory(exclude: string[] = []) {
   });
 }
 
-export function getTags() {
-  return request<{ data: TagCount[] }>("/tags");
+export async function getTags(): Promise<{ data: TagCount[] }> {
+  const payload = await request<{ data?: TagCount[] } | null>("/tags");
+  return { data: Array.isArray(payload?.data) ? payload.data : [] };
 }
 
 export function getMeta() {

@@ -50,7 +50,8 @@ export default async function StoryPage({ params }: PageProps) {
     throw error;
   }
 
-  const sourceUrl = safeExternalUrl(story.source.url);
+  const tags = Array.isArray(story.tags) ? story.tags.filter(Boolean) : [];
+  const sourceUrl = safeExternalUrl(story.source?.url ?? "");
 
   return (
     <main>
@@ -59,7 +60,7 @@ export default async function StoryPage({ params }: PageProps) {
         icon={<FileText variant="16x16_4" aria-hidden />}
         status={[
           `${story.year} 年 ${formatStoryDate(story.month, story.day)}`,
-          story.source.type.toUpperCase(),
+          (story.source?.type ?? "").toUpperCase(),
           story.id,
         ]}
       >
@@ -70,9 +71,9 @@ export default async function StoryPage({ params }: PageProps) {
               {story.year} 年 {formatStoryDate(story.month, story.day)}
               {story.lab_item ? ` · ${story.lab_item}` : ""}
             </p>
-            {story.tags.length > 0 && (
+            {tags.length > 0 && (
               <ul className="mt-2 flex flex-wrap gap-2">
-                {story.tags.map((tag) => (
+                {tags.map((tag) => (
                   <Tag key={tag}>{tag}</Tag>
                 ))}
               </ul>
@@ -91,8 +92,8 @@ export default async function StoryPage({ params }: PageProps) {
 
           <Fieldset legend="来源" className="mt-6">
             <p>
-              <span className="uppercase">{story.source.type}</span>
-              {story.source.citation ? ` · ${story.source.citation}` : ""}
+              <span className="uppercase">{story.source?.type}</span>
+              {story.source?.citation ? ` · ${story.source.citation}` : ""}
             </p>
             {sourceUrl && (
               <p className="mt-2">

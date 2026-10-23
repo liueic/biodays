@@ -22,6 +22,7 @@ export function TodayStory({ initialStory, isFallback, stamp }: TodayStoryProps)
   const [story, setStory] = useState(initialStory);
   const [shuffled, setShuffled] = useState(false);
 
+  const tags = Array.isArray(story.tags) ? story.tags.filter(Boolean) : [];
   const notice = shuffled
     ? "随机浏览中，非今日故事"
     : isFallback
@@ -48,9 +49,9 @@ export function TodayStory({ initialStory, isFallback, stamp }: TodayStoryProps)
         </h1>
         <p className="reading mt-2">{story.summary}</p>
 
-        {story.tags.length > 0 && (
+        {tags.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-2">
-            {story.tags.map((tag) => (
+            {tags.map((tag) => (
               <Tag key={tag}>{tag}</Tag>
             ))}
           </ul>

@@ -34,13 +34,14 @@ export default async function ArchivePage() {
   for (const story of all) {
     monthCounts[story.month] = (monthCounts[story.month] ?? 0) + 1;
   }
+  const total = initial.meta.total;
 
   return (
     <main>
       <Window
         title="归档 - biodays"
         icon={<Folder variant="16x16_4" aria-hidden />}
-        status={[`${initial.meta.total} 个对象`, meta ? `覆盖 ${meta.coverage}` : "覆盖范围未知"]}
+        status={[`${total} 个对象`, meta ? `覆盖 ${meta.coverage}` : "覆盖范围未知"]}
       >
         <h1 className="sr-only">归档</h1>
         <ArchiveExplorer initial={initial} tags={tags} monthCounts={monthCounts} />
@@ -56,7 +57,10 @@ async function loadArchive() {
     getAllStories(),
     getMeta().then((response) => response.data),
   ]);
-  return { initial, tags: tags.data, all, meta };
+  // Total from the filtered list can lag behind the full dataset when the API paginates
+  // differently; the explorer shows both, so keep the larger of the two.
+  const total = Math.max(initial.meta.total, all.length);
+  return { initial: { ...initial, meta: { ...initial.meta, total } }, tags: tags.data, all, meta };
 }
 
 function ArchiveOffline() {

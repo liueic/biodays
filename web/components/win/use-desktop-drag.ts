@@ -6,6 +6,13 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 /** Where each draggable thing was dropped; survives client-side navigation (not a reload). */
 const positions = new Map<string, { x: number; y: number }>();
 
+/**
+ * Start from the top-left corner during the server render. The drag library reads the
+ * starting position while the module is evaluated, and the server has no idea where the
+ * user left things — anything else would be a hydration mismatch.
+ */
+const ORIGIN = { x: 0, y: 0 };
+
 /** Windows start above the icons; every click on a window raises it above the others. */
 let topZ = 20;
 
@@ -66,7 +73,7 @@ export function useDesktopDrag<T extends HTMLElement>({
     grid,
     bounds: "body",
     disabled: !enabled || disabled,
-    defaultPosition: positions.get(id) ?? { x: 0, y: 0 },
+    defaultPosition: typeof window === "undefined" ? ORIGIN : (positions.get(id) ?? ORIGIN),
     threshold: { distance: 4 },
     onDragStart: () => {
       dragging.current = true;
