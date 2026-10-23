@@ -31,7 +31,7 @@ stories_q*.json ──▶ biodays seed ──▶ SQLite (biodays.db)
 
 ```
 biodays/
-├── .github/workflows/     GitHub Actions CI/CD 与容器构建工作流
+├── .cnb.yml               CNB 流水线：检查、测试与容器镜像构建
 ├── .prototools            固定 Go (1.27.3) / Bun (1.4.4) 工具链版本
 ├── Dockerfile             单容器镜像（Next.js + Go API）
 ├── docker-compose.yml     app + 可选 seed，只暴露一个端口
@@ -230,29 +230,30 @@ docker run -d --name biodays -p 8080:3000 \
 - `/swagger/index.html`：Swagger
 - `/readyz`：健康检查
 
-#### GitHub Actions 自动构建（GHCR）
+#### CNB 自动构建（CNB Docker 制品库）
 
-推送 `main`、推送 `v*.*.*` 标签或手动触发 CI workflow 时，会先执行 Go 测试（含 race）、`go vet`、`govulncheck` 与前端 `typecheck`/`lint`，全部通过后才构建 `linux/amd64` 与 `linux/arm64` 双架构镜像并推送到：
+推送 `main` 或推送 `v*.*.*` 标签时，`.cnb.yml` 会并行跑两条检查流水线，全部通过后再构建 `linux/amd64` 与 `linux/arm64` 双架构镜像推送到 CNB Docker 制品库：
 
-```
-ghcr.io/liueic/biodays
-```
+- `go`：`go vet ./...`、`go test -race -count=1 ./...`、`govulncheck`
+- `web`：`bun install --frozen-lockfile`、`typecheck`、`lint`
+
+镜像地址为 `docker.cnb.cool/ciallo.cv/biodays`（即 `${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}`）：
 
 - `latest`：默认分支最新构建
 - `main` / `sha-<短哈希>`：分支构建
 - `1.2.3` / `1.2`：Git tag（如 `v1.2.3`）
 - PR 只构建校验，不推送
 
-首次推送后 GHCR package 默认私有；如需公开拉取，在仓库的 Packages 设置中调整可见性。拉取运行：
+拉取运行（私有仓库需先 `docker login docker.cnb.cool`）：
 
 ```bash
-docker pull ghcr.io/liueic/biodays:latest
+docker pull docker.cnb.cool/ciallo.cv/biodays:latest
 docker run -d --name biodays -p 8080:3000 \
   -v biodays-data:/data \
   -v /path/to/data:/seed:ro \
   -e BIODAYS_DATA_DIR=/seed \
   -e BIODAYS_SITE_URL=http://localhost:8080 \
-  ghcr.io/liueic/biodays:latest
+  docker.cnb.cool/ciallo.cv/biodays:latest
 ```
 
 #### Docker Compose（推荐）
@@ -262,7 +263,7 @@ docker run -d --name biodays -p 8080:3000 \
 ```bash
 cp .env.example .env
 # 编辑 .env：设置 BIODAYS_SITE_URL 与 BIODAYS_DATA_DIR
-# 私有 GHCR 包需要先登录：docker login ghcr.io -u liueic
+# 私有镜像需要先登录：docker login docker.cnb.cool
 
 docker compose pull
 docker compose up -d
