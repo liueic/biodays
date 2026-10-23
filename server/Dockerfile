@@ -15,7 +15,6 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
 
 COPY . .
-# 只编 linux/amd64 时保持原生编译；多架构构建请走根目录 Dockerfile（那边用 C 交叉编译）。
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags="-s -w" -o /out/biodays ./cmd/biodays

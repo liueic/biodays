@@ -1,7 +1,7 @@
 # biodays CI —— 由 GitHub Actions（.github/workflows/container.yml）迁移而来
 #
 # push main / 打 v*.*.* tag 时，go、web 两条流水线并行执行，全部通过后 container
-# 构建 linux/amd64,linux/arm64 双架构镜像并推送到 CNB Docker 制品库。
+# 构建 linux/amd64 镜像并推送到 CNB Docker 制品库。
 # PR 场景只做同样的校验与镜像构建，不推送。
 #
 # 工具链版本与 .prototools 对齐：Go 1.27.3、Bun 1.4.4。
@@ -25,15 +25,13 @@
       docker:
         image: golang:1.27.3
         volumes:
-          # runner 可能是 amd64 也可能是 arm64，go-build 缓存与架构强相关，
-          # 混挂会让缓存反复 miss（甚至读到机器码不匹配的条目）。按 GOARCH 分开。
           - /tmp/gomod
-          - /tmp/gocache/$GOARCH
+          - /tmp/gocache
       env:
         CGO_ENABLED: "1"
         GOMODCACHE: /tmp/gomod
         # 与上面的 volume 必须保持一致，否则缓存写了不用
-        GOCACHE: /tmp/gocache/$GOARCH
+        GOCACHE: /tmp/gocache
       stages:
         - name: vet
           script: cd server && go vet ./...
@@ -83,7 +81,7 @@
             # PR 只校验能构建成功，产物不落盘。
             # Layer 缓存走 registry：缓存未变化的分支后续复用，不必从零编译。
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
+              --platform linux/amd64 \
               --cache-from type=registry,ref=$CACHE_IMAGE \
               --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
               --output type=cacheonly \
@@ -102,15 +100,13 @@ main:
       docker:
         image: golang:1.27.3
         volumes:
-          # runner 可能是 amd64 也可能是 arm64，go-build 缓存与架构强相关，
-          # 混挂会让缓存反复 miss（甚至读到机器码不匹配的条目）。按 GOARCH 分开。
           - /tmp/gomod
-          - /tmp/gocache/$GOARCH
+          - /tmp/gocache
       env:
         CGO_ENABLED: "1"
         GOMODCACHE: /tmp/gomod
         # 与上面的 volume 必须保持一致，否则缓存写了不用
-        GOCACHE: /tmp/gocache/$GOARCH
+        GOCACHE: /tmp/gocache
       stages:
         - name: vet
           script: cd server && go vet ./...
@@ -158,7 +154,7 @@ main:
         - name: build and push
           script: |
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
+              --platform linux/amd64 \
               --cache-from type=registry,ref=$CACHE_IMAGE \
               --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
               -t $IMAGE:latest \
@@ -176,15 +172,13 @@ main:
       docker:
         image: golang:1.27.3
         volumes:
-          # runner 可能是 amd64 也可能是 arm64，go-build 缓存与架构强相关，
-          # 混挂会让缓存反复 miss（甚至读到机器码不匹配的条目）。按 GOARCH 分开。
           - /tmp/gomod
-          - /tmp/gocache/$GOARCH
+          - /tmp/gocache
       env:
         CGO_ENABLED: "1"
         GOMODCACHE: /tmp/gomod
         # 与上面的 volume 必须保持一致，否则缓存写了不用
-        GOCACHE: /tmp/gocache/$GOARCH
+        GOCACHE: /tmp/gocache
       stages:
         - name: vet
           script: cd server && go vet ./...
@@ -226,7 +220,7 @@ main:
             VERSION=${CNB_BRANCH#v}
             MINOR=${VERSION%.*}
             docker buildx build \
-              --platform linux/amd64,linux/arm64 \
+              --platform linux/amd64 \
               --cache-from type=registry,ref=$CACHE_IMAGE \
               --cache-to type=registry,ref=$CACHE_IMAGE,mode=max \
               -t $IMAGE:$VERSION \
