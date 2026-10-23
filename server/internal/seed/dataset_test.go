@@ -47,6 +47,9 @@ func TestBundledDataset(t *testing.T) {
 	require.NotEmpty(t, story.ID)
 	meta, err := service.NewStoryService(st).Meta(context.Background())
 	require.NoError(t, err)
+	require.EqualValues(t, manifest.Total, meta.Total)
+	require.Equal(t, []string{"Q1", "Q2", "Q3", "Q4"}, meta.Quarters)
+	require.Equal(t, "1-12月", meta.Coverage)
 	require.Equal(t, manifest.Version, meta.DatasetVersion)
 	var counted int64
 	for _, count := range meta.MonthCounts {

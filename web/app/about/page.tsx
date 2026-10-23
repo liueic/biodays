@@ -1,11 +1,10 @@
 import { Fieldset } from "@react95/core/Fieldset";
 import { HelpBook } from "@react95/icons/HelpBook";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { Window } from "@/components/win/window";
 import { getMeta } from "@/lib/api";
 import { DOCS_URL, SITE_NAME } from "@/lib/site";
-
-export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "关于",
@@ -58,6 +57,9 @@ const ERRORS = [
 ];
 
 export default async function AboutPage() {
+  // The API starts after the image is built. Keep build-time connection failures
+  // out of the prerendered HTML; getMeta still caches successful reads for 300s.
+  await connection();
   const meta = await getMeta()
     .then((response) => response.data)
     .catch(() => null);
@@ -78,7 +80,7 @@ export default async function AboutPage() {
           <div className="reading">
             <p>
               服务端以 <code className="font-mono">Asia/Shanghai</code>（+08:00）判断“今天”，
-              查找同月同日的条目；同日有多条时取年份最早的一条。
+              查找同月同日的条目；同日有多条时优先随机推荐未读故事，不限制故事编号。
             </p>
             <p>
               数据尚未覆盖的日期会随机推荐一篇并加以标注，也可通过{" "}
@@ -88,15 +90,25 @@ export default async function AboutPage() {
         </Fieldset>
 
         <Fieldset legend="数据覆盖" className="mt-5">
-          <dl className="grid grid-cols-[6rem_1fr] gap-y-1">
-            <dt>故事总数</dt>
-            <dd>{meta ? `${meta.total} 篇` : "—"}</dd>
-            <dt>覆盖范围</dt>
-            <dd>{meta?.coverage || "—"}</dd>
-            <dt>季度</dt>
-            <dd>{(meta?.quarters ?? []).join("、") || "—"}</dd>
-          </dl>
-          <p className="mt-2">其余季度仍在整理中，补齐前缺口日期走随机兜底。</p>
+          {meta ? (
+            <>
+              <dl className="grid grid-cols-[6rem_1fr] gap-y-1">
+                <dt>故事总数</dt>
+                <dd>{meta.total} 篇</dd>
+                <dt>覆盖范围</dt>
+                <dd>{meta.coverage || "暂无故事"}</dd>
+                <dt>季度</dt>
+                <dd>{meta.quarters.join("、") || "暂无故事"}</dd>
+              </dl>
+              <p className="mt-2">
+                统计包含所有编号的故事，季度与月份按故事日期计算。月份覆盖不代表每天都有故事，缺口日期会随机推荐。
+              </p>
+            </>
+          ) : (
+            <p role="status">
+              暂时无法读取数据统计，请<a href="/about">刷新重试</a>。
+            </p>
+          )}
         </Fieldset>
 
         <Fieldset legend="公开 API" className="mt-5">
