@@ -23,7 +23,9 @@ RUN addgroup -S biodays \
 
 COPY --from=build /out/biodays /usr/local/bin/biodays
 
-ENV BIODAYS_DB_PATH=/data/biodays.db
+# gin 未设 GIN_MODE 时默认 debug 模式，镜像里固定为 release。
+ENV BIODAYS_DB_PATH=/data/biodays.db \
+    GIN_MODE=release
 WORKDIR /data
 USER biodays
 EXPOSE 8080

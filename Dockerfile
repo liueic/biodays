@@ -41,7 +41,11 @@ COPY --from=web-build --chown=biodays:biodays /app/web/.next/static/ /app/.next/
 COPY --from=web-build --chown=biodays:biodays /app/web/public* /app/public/
 COPY --chown=biodays:biodays deploy/launcher.js /app/launcher.js
 
+# GIN_MODE 必须显式设为 release：gin 默认以 debug 模式启动，会打印
+# [GIN-debug] 警告并开启调试输出。配置读取只认环境变量 GIN_MODE，
+# 项目自身没有 set 过它，所以在镜像里固定下来，compose 仍可按需覆盖。
 ENV NODE_ENV=production \
+    GIN_MODE=release \
     HOSTNAME=0.0.0.0 \
     PORT=3000 \
     BIODAYS_PORT=8080 \

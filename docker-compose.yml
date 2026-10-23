@@ -35,6 +35,9 @@ services:
       BIODAYS_SITE_URL: ${BIODAYS_SITE_URL:-http://localhost:8080}
       BIODAYS_RATE_LIMIT: ${BIODAYS_RATE_LIMIT:-60}
       BIODAYS_LOG_LEVEL: ${BIODAYS_LOG_LEVEL:-info}
+      # Gin 运行模式。镜像里已固定 release，这里显式声明一次表达意图；
+      # 仅在需要复现调试行为时才改成 debug（会有 [GIN-debug] 警告与调试输出）。
+      GIN_MODE: ${GIN_MODE:-release}
     volumes:
       - biodays-data:/data
       - ${BIODAYS_DATA_DIR:-./seed-data}:/seed:ro
