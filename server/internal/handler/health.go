@@ -14,12 +14,16 @@ type Pinger interface {
 }
 
 type ReadyHandler struct {
-	pinger Pinger
-	logger *slog.Logger
+	pingers []Pinger
+	logger  *slog.Logger
 }
 
 func NewReadyHandler(pinger Pinger, logger *slog.Logger) *ReadyHandler {
-	return &ReadyHandler{pinger: pinger, logger: logger}
+	return NewReadyHandlers(logger, pinger)
+}
+
+func NewReadyHandlers(logger *slog.Logger, pingers ...Pinger) *ReadyHandler {
+	return &ReadyHandler{pingers: pingers, logger: logger}
 }
 
 // Ready godoc
@@ -35,10 +39,15 @@ func (h *ReadyHandler) Ready(c *gin.Context) {
 	defer cancel()
 
 	c.Header("Cache-Control", "no-store")
-	if err := h.pinger.Ping(ctx); err != nil {
-		h.logger.Error("readiness check failed", "error", err)
-		c.JSON(http.StatusServiceUnavailable, HealthResponse{Status: "unavailable"})
-		return
+	for _, pinger := range h.pingers {
+		if pinger == nil {
+			continue
+		}
+		if err := pinger.Ping(ctx); err != nil {
+			h.logger.Error("readiness check failed", "error", err)
+			c.JSON(http.StatusServiceUnavailable, HealthResponse{Status: "unavailable"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }

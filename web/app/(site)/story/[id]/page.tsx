@@ -112,6 +112,19 @@ export default async function StoryPage({ params }: PageProps) {
             )}
           </Fieldset>
 
+          <Fieldset legend="纠错 / 补充线索" className="mt-6">
+            <p>
+              发现年份、引文或事实有误？
+              <Link
+                className="text-link"
+                href={`/feedback?kind=issue&story_id=${encodeURIComponent(story.id)}`}
+              >
+                提交反馈
+              </Link>
+              ，无需注册。
+            </p>
+          </Fieldset>
+
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <Button as={Link} href="/archive" className="px-4">
               返回归档(B)

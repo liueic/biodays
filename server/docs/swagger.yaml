@@ -1,80 +1,189 @@
 basePath: /
 definitions:
-  handler.ErrorBody:
+  biodays_server_internal_model.FeedbackDetailDTO:
     properties:
-      code:
-        example: STORY_NOT_FOUND
+      closed_at:
         type: string
-      message:
-        example: story Q2-99 not found
+      confirmed_at:
         type: string
-    type: object
-  handler.ErrorResponse:
-    properties:
-      error:
-        $ref: '#/definitions/handler.ErrorBody'
-    type: object
-  handler.HealthResponse:
-    properties:
-      status:
-        example: ok
+      consent_version:
         type: string
-    type: object
-  handler.HistoryRequest:
-    properties:
+      consented_at:
+        type: string
+      content:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      email_verified:
+        type: boolean
+      events:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.FeedbackEventDTO'
+        type: array
       id:
-        maxLength: 16
         type: string
-    required:
-    - id
+      internal_note:
+        type: string
+      kind:
+        type: string
+      mail:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.MailTaskDTO'
+        type: array
+      nickname:
+        type: string
+      public_reply:
+        type: string
+      source_url:
+        type: string
+      status:
+        type: string
+      story_id:
+        type: string
+      subscription_status:
+        type: string
+      title:
+        type: string
+      unsubscribed_at:
+        type: string
+      updated_at:
+        type: string
+      version:
+        type: integer
     type: object
-  handler.ListMeta:
+  biodays_server_internal_model.FeedbackEventDTO:
     properties:
-      page:
+      actor:
+        type: string
+      created_at:
+        type: string
+      from_status:
+        type: string
+      internal_note:
+        type: string
+      public_reply:
+        type: string
+      seq:
+        type: integer
+      to_status:
+        type: string
+    type: object
+  biodays_server_internal_model.FeedbackKindOption:
+    properties:
+      label:
+        example: 想看话题
+        type: string
+      value:
+        example: topic
+        type: string
+    type: object
+  biodays_server_internal_model.FeedbackLimits:
+    properties:
+      content_max:
+        example: 5000
+        type: integer
+      content_min:
+        example: 10
+        type: integer
+      nickname_max:
+        example: 40
+        type: integer
+      source_url_max:
+        example: 2048
+        type: integer
+      title_max:
+        example: 80
+        type: integer
+      title_min:
         example: 1
         type: integer
-      page_size:
-        example: 20
+    type: object
+  biodays_server_internal_model.FeedbackListItemDTO:
+    properties:
+      created_at:
+        type: string
+      has_email:
+        type: boolean
+      has_nickname:
+        type: boolean
+      id:
+        type: string
+      kind:
+        type: string
+      status:
+        type: string
+      story_id:
+        type: string
+      subscription_status:
+        type: string
+      summary:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      version:
         type: integer
-      total:
-        example: 104
-        type: integer
     type: object
-  handler.MetaResponse:
+  biodays_server_internal_model.FeedbackOptionsDTO:
     properties:
-      data:
-        $ref: '#/definitions/model.Meta'
-    type: object
-  handler.StoryListResponse:
-    properties:
-      data:
+      enabled:
+        type: boolean
+      kinds:
         items:
-          $ref: '#/definitions/model.StoryDTO'
+          $ref: '#/definitions/biodays_server_internal_model.FeedbackKindOption'
         type: array
-      meta:
-        $ref: '#/definitions/handler.ListMeta'
-    type: object
-  handler.TagsResponse:
-    properties:
-      data:
-        items:
-          $ref: '#/definitions/model.TagCount'
-        type: array
-    type: object
-  handler.TodayMeta:
-    properties:
-      is_fallback:
-        example: false
+      limits:
+        $ref: '#/definitions/biodays_server_internal_model.FeedbackLimits'
+      subscriptions_enabled:
         type: boolean
     type: object
-  handler.TodayResponse:
+  biodays_server_internal_model.MailStatusDTO:
     properties:
-      data:
-        $ref: '#/definitions/model.StoryDTO'
-      meta:
-        $ref: '#/definitions/handler.TodayMeta'
+      configured:
+        type: boolean
+      counts:
+        additionalProperties:
+          format: int64
+          type: integer
+        type: object
+      missing:
+        items:
+          type: string
+        type: array
+      notify_configured:
+        type: boolean
+      recent_errors:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.MailTaskDTO'
+        type: array
+      smtp_enabled:
+        type: boolean
     type: object
-  model.Meta:
+  biodays_server_internal_model.MailTaskDTO:
+    properties:
+      attempts:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      last_error:
+        type: string
+      next_attempt_at:
+        type: string
+      smtp_accepted_at:
+        type: string
+      status:
+        type: string
+      type:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  biodays_server_internal_model.Meta:
     properties:
       coverage:
         example: 1-3月 / 10-12月
@@ -97,7 +206,7 @@ definitions:
         example: 104
         type: integer
     type: object
-  model.Source:
+  biodays_server_internal_model.Source:
     properties:
       citation:
         type: string
@@ -106,7 +215,7 @@ definitions:
       url:
         type: string
     type: object
-  model.StoryDTO:
+  biodays_server_internal_model.StoryDTO:
     properties:
       content:
         type: string
@@ -124,7 +233,7 @@ definitions:
         example: 1
         type: integer
       source:
-        $ref: '#/definitions/model.Source'
+        $ref: '#/definitions/biodays_server_internal_model.Source'
       summary:
         type: string
       tags:
@@ -137,7 +246,21 @@ definitions:
         example: 1961
         type: integer
     type: object
-  model.TagCount:
+  biodays_server_internal_model.SubmitReceiptDTO:
+    properties:
+      created_at:
+        type: string
+      id:
+        example: 9f2c1d7e8a4b
+        type: string
+      status:
+        example: pending
+        type: string
+      subscription_status:
+        example: none
+        type: string
+    type: object
+  biodays_server_internal_model.TagCount:
     properties:
       count:
         example: 8
@@ -146,12 +269,658 @@ definitions:
         example: 仪器极客
         type: string
     type: object
+  internal_handler.AcceptedDTO:
+    properties:
+      accepted:
+        example: true
+        type: boolean
+    type: object
+  internal_handler.AcceptedResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handler.AcceptedDTO'
+    type: object
+  internal_handler.AdminFeedbackDetailResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.FeedbackDetailDTO'
+    type: object
+  internal_handler.AdminFeedbackListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.FeedbackListItemDTO'
+        type: array
+      meta:
+        $ref: '#/definitions/internal_handler.ListMeta'
+    type: object
+  internal_handler.AdminPatchRequest:
+    properties:
+      internal_note:
+        type: string
+      notify_subscriber:
+        type: boolean
+      public_reply:
+        type: string
+      status:
+        type: string
+      version:
+        type: integer
+    type: object
+  internal_handler.AdminSessionDTO:
+    properties:
+      csrf_token:
+        type: string
+      expires_at:
+        type: string
+      username:
+        type: string
+    type: object
+  internal_handler.AdminSessionResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handler.AdminSessionDTO'
+    type: object
+  internal_handler.AdminUpdateMeta:
+    properties:
+      notified:
+        type: boolean
+      notify_skipped_note:
+        type: string
+    type: object
+  internal_handler.AdminUpdateResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.FeedbackDetailDTO'
+      meta:
+        $ref: '#/definitions/internal_handler.AdminUpdateMeta'
+    type: object
+  internal_handler.ErrorBody:
+    properties:
+      code:
+        example: STORY_NOT_FOUND
+        type: string
+      fields:
+        additionalProperties:
+          type: string
+        type: object
+      message:
+        example: story Q2-99 not found
+        type: string
+    type: object
+  internal_handler.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/internal_handler.ErrorBody'
+    type: object
+  internal_handler.FeedbackOptionsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.FeedbackOptionsDTO'
+    type: object
+  internal_handler.FeedbackReceiptResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.SubmitReceiptDTO'
+    type: object
+  internal_handler.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    type: object
+  internal_handler.HistoryRequest:
+    properties:
+      id:
+        maxLength: 16
+        type: string
+    required:
+    - id
+    type: object
+  internal_handler.ListMeta:
+    properties:
+      page:
+        example: 1
+        type: integer
+      page_size:
+        example: 20
+        type: integer
+      total:
+        example: 104
+        type: integer
+    type: object
+  internal_handler.LoginRequest:
+    properties:
+      password:
+        example: correct horse battery staple
+        type: string
+      username:
+        example: admin
+        type: string
+    type: object
+  internal_handler.MailStatusResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.MailStatusDTO'
+    type: object
+  internal_handler.MailTaskListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.MailTaskDTO'
+        type: array
+      meta:
+        $ref: '#/definitions/internal_handler.ListMeta'
+    type: object
+  internal_handler.MetaResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.Meta'
+    type: object
+  internal_handler.StoryListResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.StoryDTO'
+        type: array
+      meta:
+        $ref: '#/definitions/internal_handler.ListMeta'
+    type: object
+  internal_handler.SubscriptionResultDTO:
+    properties:
+      result:
+        example: confirmed
+        type: string
+      subscription_status:
+        example: confirmed
+        type: string
+    type: object
+  internal_handler.SubscriptionResultResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handler.SubscriptionResultDTO'
+    type: object
+  internal_handler.TagsResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/biodays_server_internal_model.TagCount'
+        type: array
+    type: object
+  internal_handler.TodayMeta:
+    properties:
+      is_fallback:
+        example: false
+        type: boolean
+    type: object
+  internal_handler.TodayResponse:
+    properties:
+      data:
+        $ref: '#/definitions/biodays_server_internal_model.StoryDTO'
+      meta:
+        $ref: '#/definitions/internal_handler.TodayMeta'
+    type: object
+  internal_handler.resendRequest:
+    properties:
+      email:
+        type: string
+      feedback_id:
+        type: string
+    type: object
+  internal_handler.submitRequest:
+    properties:
+      content:
+        type: string
+      email:
+        type: string
+      kind:
+        type: string
+      nickname:
+        type: string
+      request_id:
+        type: string
+      source_url:
+        type: string
+      story_id:
+        type: string
+      subscribe_updates:
+        type: boolean
+      title:
+        type: string
+      website:
+        description: 'honeypot: must stay empty'
+        type: string
+    type: object
+  internal_handler.tokenRequest:
+    properties:
+      token:
+        type: string
+    type: object
 info:
   contact: {}
-  description: 实验室科学史上的今天 · 公开 REST API
+  description: 实验室科学史上的今天 · 公开 REST API 与反馈/管理接口
   title: biodays API
   version: "1.0"
 paths:
+  /api/v1/admin/feedback:
+    get:
+      description: 按新到旧排序，支持 kind/status/q 筛选与分页；列表不返回完整邮箱。
+      parameters:
+      - description: 反馈类型
+        in: query
+        name: kind
+        type: string
+      - description: 反馈状态
+        in: query
+        name: status
+        type: string
+      - description: 关键词
+        in: query
+        name: q
+        type: string
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AdminFeedbackListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 反馈收件箱列表
+      tags:
+      - admin
+  /api/v1/admin/feedback/{id}:
+    delete:
+      description: 清理联系方式、订阅令牌、事件与未发送邮件，保留最小删除审计信息。
+      parameters:
+      - description: 反馈编号
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AcceptedResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 删除反馈
+      tags:
+      - admin
+    get:
+      description: 返回完整投稿、联系方式、处理记录和邮件任务状态。
+      parameters:
+      - description: 反馈编号
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AdminFeedbackDetailResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 反馈详情
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: 携带 version 做并发控制；状态变化时记录事件。只有已确认订阅且显式 notify_subscriber 时才排队用户邮件。
+      parameters:
+      - description: 反馈编号
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 更新内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.AdminPatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AdminUpdateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 更新反馈状态与备注
+      tags:
+      - admin
+  /api/v1/admin/login:
+    post:
+      consumes:
+      - application/json
+      description: 同源 JSON 请求；成功设置 HttpOnly + SameSite=Strict 会话 Cookie，返回 CSRF 令牌。失败尝试按
+        IP/账号独立限流。
+      parameters:
+      - description: 账号密码
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AdminSessionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 管理员登录
+      tags:
+      - admin
+  /api/v1/admin/logout:
+    post:
+      description: 立即撤销当前会话并清除 Cookie。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AcceptedResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 管理员退出
+      tags:
+      - admin
+  /api/v1/admin/mail/outbox:
+    get:
+      description: 分页查看任务类型、状态、尝试次数与失败原因；不返回收件人与敏感 payload。
+      parameters:
+      - description: 任务类型
+        in: query
+        name: type
+        type: string
+      - description: 任务状态
+        in: query
+        name: status
+        type: string
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.MailTaskListResponse'
+      summary: 邮件任务列表
+      tags:
+      - admin
+  /api/v1/admin/mail/outbox/{id}/retry:
+    post:
+      description: 仅 failed/unknown 任务可重试；发送前由 worker 复查订阅与反馈状态。
+      parameters:
+      - description: 任务 ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_handler.AcceptedResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 重试邮件任务
+      tags:
+      - admin
+  /api/v1/admin/mail/status:
+    get:
+      description: 返回配置是否齐全、队列计数和最近错误；不返回任何口令。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.MailStatusResponse'
+      summary: SMTP 配置与队列状态
+      tags:
+      - admin
+  /api/v1/admin/mail/test:
+    post:
+      description: 仅发往配置的管理员接收地址，返回 202；调用方不能指定收件人。
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_handler.AcceptedResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 发送 SMTP 测试邮件
+      tags:
+      - admin
+  /api/v1/admin/me:
+    get:
+      description: 返回管理员用户名、CSRF 令牌与过期时间；令牌不进入 localStorage。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.AdminSessionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 当前管理员会话
+      tags:
+      - admin
+  /api/v1/feedback:
+    post:
+      consumes:
+      - application/json
+      description: 无需注册。首次写入返回 201；相同 request_id 与相同内容的重试返回 200 与原回执；相同 request_id
+        不同内容返回 409。
+      parameters:
+      - description: 反馈内容
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.submitRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.FeedbackReceiptResponse'
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.FeedbackReceiptResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 匿名提交反馈
+      tags:
+      - feedback
+  /api/v1/feedback/options:
+    get:
+      description: 返回反馈是否启用、是否支持邮件订阅、反馈类型和字段限制；不含任何 SMTP 凭据。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.FeedbackOptionsResponse'
+      summary: 反馈表单能力
+      tags:
+      - feedback
+  /api/v1/feedback/subscriptions/confirm:
+    post:
+      consumes:
+      - application/json
+      description: GET 不修改状态；本接口由页面按钮 POST 调用，单次使用，重复确认返回稳定结果。
+      parameters:
+      - description: 确认令牌
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.tokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.SubscriptionResultResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 确认邮件订阅
+      tags:
+      - feedback
+  /api/v1/feedback/subscriptions/resend:
+    post:
+      consumes:
+      - application/json
+      description: 始终返回 202，不泄露邮箱与反馈的对应关系；实际发送需匹配且通过频率限制。
+      parameters:
+      - description: 反馈编号与邮箱
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.resendRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/internal_handler.AcceptedResponse'
+      summary: 重发订阅确认邮件
+      tags:
+      - feedback
+  /api/v1/feedback/subscriptions/unsubscribe:
+    post:
+      consumes:
+      - application/json
+      description: 使用专用令牌，幂等；已退订时返回稳定结果。
+      parameters:
+      - description: 退订令牌
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.tokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.SubscriptionResultResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 退订反馈邮件
+      tags:
+      - feedback
   /api/v1/history:
     post:
       consumes:
@@ -163,18 +932,18 @@ paths:
         name: body
         required: true
         schema:
-          $ref: '#/definitions/handler.HistoryRequest'
+          $ref: '#/definitions/internal_handler.HistoryRequest'
       responses:
         "204":
           description: 已记录
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 记录已浏览故事
       tags:
       - stories
@@ -187,15 +956,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.MetaResponse'
+            $ref: '#/definitions/internal_handler.MetaResponse'
         "429":
           description: Too Many Requests
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 数据集概况
       tags:
       - meta
@@ -240,19 +1009,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.StoryListResponse'
+            $ref: '#/definitions/internal_handler.StoryListResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "429":
           description: Too Many Requests
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 故事列表
       tags:
       - stories
@@ -271,19 +1040,19 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.StoryDTO'
+            $ref: '#/definitions/biodays_server_internal_model.StoryDTO'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "429":
           description: Too Many Requests
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 故事详情
       tags:
       - stories
@@ -301,23 +1070,23 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/model.StoryDTO'
+            $ref: '#/definitions/biodays_server_internal_model.StoryDTO'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "429":
           description: Too Many Requests
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 随机故事
       tags:
       - stories
@@ -330,15 +1099,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.TagsResponse'
+            $ref: '#/definitions/internal_handler.TagsResponse'
         "429":
           description: Too Many Requests
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 标签列表
       tags:
       - meta
@@ -366,23 +1135,23 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.TodayResponse'
+            $ref: '#/definitions/internal_handler.TodayResponse'
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "429":
           description: Too Many Requests
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
         "500":
           description: Internal Server Error
           schema:
-            $ref: '#/definitions/handler.ErrorResponse'
+            $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 获取今日故事
       tags:
       - stories
@@ -395,7 +1164,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.HealthResponse'
+            $ref: '#/definitions/internal_handler.HealthResponse'
       summary: 健康检查
       tags:
       - system
@@ -408,11 +1177,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/handler.HealthResponse'
+            $ref: '#/definitions/internal_handler.HealthResponse'
         "503":
           description: Service Unavailable
           schema:
-            $ref: '#/definitions/handler.HealthResponse'
+            $ref: '#/definitions/internal_handler.HealthResponse'
       summary: 就绪检查
       tags:
       - system

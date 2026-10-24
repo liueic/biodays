@@ -13,6 +13,17 @@ biodays 的 Next.js 前端。基于 App Router、React 19、TypeScript strict、
 - **黄金分割居中**：垂直空间以 `0.382 : 0.618` 黄金分割自适应，短视窗优雅居中偏上，长内容平滑滚动。
 - **移动端阅读**：仅在宽屏且使用精细指针时启用拖拽；触屏保留内容区原生滚动。长标题截断于标题栏、正文自动换行，超宽公式和代码局部横向滚动；手机归档列表跟随页面滚动，任务栏预留底部安全区域。
 
+## 路由与布局
+
+- `app/(site)/layout.tsx`：阅读区根布局，保留 Umami 统计与录制脚本；包含首页、归档、故事详情、关于。
+- `app/(private)/layout.tsx`：反馈与后台根布局，共享 Win98 桌面外壳，但**不加载**统计或录制。两个根布局之间切换会整页重载，从而结束阅读页已加载的录制脚本。
+- `app/(private)/feedback`：灵感信箱（匿名投稿、回执、重发确认邮件）。
+- `app/(private)/feedback/confirm`、`unsubscribe`：从邮件 fragment `#token=…` 读取令牌，读后立即用 `history.replaceState` 清除地址栏；只有点击按钮才 POST。
+- `app/(private)/admin/login`、`admin/feedback`、`admin/feedback/[id]`、`admin/mail`：单管理员登录、收件箱、详情处理与 SMTP/队列面板。
+- `app/robots.ts`、`app/sitemap.ts`：后台、确认与退订页不索引；`/feedback` 可索引并加入 sitemap；`next.config.ts` 额外设置 `X-Robots-Tag`、`Referrer-Policy: no-referrer` 与 `no-store`。
+
+反馈与管理请求通过 `lib/feedback-api.ts`、`lib/admin-api.ts` 走同源 `/api/v1`；管理 CSRF 令牌只保存在内存（不写 localStorage），页面加载后由 `/admin/me` 重新获取。后台 Cookie 由 Go 设置为 HttpOnly + SameSite=Strict，HTTPS 站点带 Secure。
+
 ## 开发
 
 工具链版本由仓库根目录 `.prototools` 固定（Bun 1.4.4）；使用 proto 时先在仓库根目录执行 `proto install`。

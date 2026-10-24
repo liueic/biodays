@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Git-tracked JSON is the source of truth; SQLite is a build artifact.
 FROM server-build AS data-build
 COPY data/ /seed/
-RUN mkdir -p /out/data \
+RUN mkdir -p /out/data /out/feedback \
     && BIODAYS_DATA_DIR=/seed BIODAYS_DB_PATH=/out/data/biodays.db \
        /out/biodays seed --strict
 
@@ -38,6 +38,7 @@ RUN --mount=type=cache,target=/app/web/.next/cache \
 FROM gcr.io/distroless/nodejs24-debian13:nonroot
 COPY --from=server-build /out/biodays /usr/local/bin/biodays
 COPY --from=data-build --chown=65532:65532 /out/data/ /data/
+COPY --from=data-build --chown=65532:65532 /out/feedback/ /var/lib/biodays/
 COPY --from=web-build --chown=65532:65532 /app/web/.next/standalone/ /app/
 COPY --from=web-build --chown=65532:65532 /app/web/.next/static/ /app/.next/static/
 COPY --from=web-build --chown=65532:65532 /app/web/public/ /app/public/
@@ -48,6 +49,7 @@ ENV NODE_ENV=production \
     PORT=3000 \
     BIODAYS_PORT=8080 \
     BIODAYS_DB_PATH=/data/biodays.db \
+    BIODAYS_FEEDBACK_DB_PATH=/var/lib/biodays/feedback.db \
     BIODAYS_API_URL=http://127.0.0.1:8080 \
     BIODAYS_CORS_ORIGINS=* \
     BIODAYS_TRUSTED_PROXIES=127.0.0.1,::1 \

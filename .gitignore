@@ -13,7 +13,9 @@ SPEC.md
 
 # Go
 server/biodays.db*
+server/feedback.db*
 server/bin/
+backups/
 server/coverage.out
 
 # Next.js / Bun

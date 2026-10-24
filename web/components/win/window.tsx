@@ -15,6 +15,7 @@ const MENU = [
   { href: "/", label: "今日", key: "T" },
   { href: "/archive", label: "归档", key: "A" },
   { href: "/about", label: "关于", key: "B" },
+  { href: "/feedback", label: "反馈", key: "F" },
 ];
 
 type WindowProps = {
@@ -22,10 +23,19 @@ type WindowProps = {
   icon: ReactElement;
   status?: ReactNode[];
   children: ReactNode;
+  variant?: "browser" | "mail";
+  width?: "default" | "wide";
 };
 
 /** A Win98 application window: title bar, menu bar, toolbar, sunken client area, status bar. */
-export function Window({ title, icon, status = [], children }: WindowProps) {
+export function Window({
+  title,
+  icon,
+  status = [],
+  children,
+  variant = "browser",
+  width = "default",
+}: WindowProps) {
   const pathname = usePathname();
   const router = useRouter();
   const frame = useWindowFrame<HTMLDivElement>({
@@ -44,7 +54,8 @@ export function Window({ title, icon, status = [], children }: WindowProps) {
       boxShadow="$out"
       padding="$2"
       className={cn(
-        "relative mx-auto w-full min-w-0 max-w-[880px]",
+        "relative mx-auto w-full min-w-0",
+        width === "wide" ? "max-w-[1220px]" : "max-w-[880px]",
         frame.hidden && "hidden",
         frame.maximized && !frame.hidden && "win-maximized",
       )}
@@ -84,41 +95,46 @@ export function Window({ title, icon, status = [], children }: WindowProps) {
         })}
       </nav>
 
-      <Frame
-        display="flex"
-        alignItems="center"
-        gap="$6"
-        padding="$4"
-        className="flex-wrap border-t border-[#868a8e]"
-      >
-        <Button className="shrink-0 px-3 sm:px-5" onClick={() => router.back()}>
-          后退
-        </Button>
-        <Button className="shrink-0 px-3 sm:px-5" onClick={() => router.push("/")}>
-          主页
-        </Button>
-        <span className="ml-2 hidden shrink-0 sm:inline">地址(D)</span>
+      {variant === "browser" && (
         <Frame
-          boxShadow="$in"
-          bgColor="$inputBackground"
           display="flex"
           alignItems="center"
-          gap="$4"
+          gap="$6"
           padding="$4"
-          className="min-w-0 flex-[1_1_120px]"
+          className="flex-wrap border-t border-[#868a8e]"
         >
-          <Globe variant="16x16_4" width={16} height={16} aria-hidden className="shrink-0" />
-          <span className="truncate">biodays:/{pathname}</span>
+          <Button className="shrink-0 px-3 sm:px-5" onClick={() => router.back()}>
+            后退
+          </Button>
+          <Button className="shrink-0 px-3 sm:px-5" onClick={() => router.push("/")}>
+            主页
+          </Button>
+          <span className="ml-2 hidden shrink-0 sm:inline">地址(D)</span>
+          <Frame
+            boxShadow="$in"
+            bgColor="$inputBackground"
+            display="flex"
+            alignItems="center"
+            gap="$4"
+            padding="$4"
+            className="min-w-0 flex-[1_1_120px]"
+          >
+            <Globe variant="16x16_4" width={16} height={16} aria-hidden className="shrink-0" />
+            <span className="truncate">biodays:/{pathname}</span>
+          </Frame>
         </Frame>
-      </Frame>
+      )}
 
       <Frame
         as="div"
         id="window-content"
         boxShadow="$in"
-        bgColor="$inputBackground"
+        bgColor={variant === "mail" ? "$material" : "$inputBackground"}
         padding="$16"
-        className="window-content min-h-[360px] sm:p-6"
+        className={cn(
+          "window-content min-h-[360px]",
+          variant === "browser" ? "sm:p-6" : "mail-window-content p-0",
+        )}
       >
         {children}
       </Frame>

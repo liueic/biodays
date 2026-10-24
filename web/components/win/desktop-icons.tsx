@@ -4,6 +4,7 @@ import { FileFind } from "@react95/icons/FileFind";
 import { FileText } from "@react95/icons/FileText";
 import { Folder } from "@react95/icons/Folder";
 import { HelpBook } from "@react95/icons/HelpBook";
+import { Mail } from "@react95/icons/Mail";
 import { Star } from "@react95/icons/Star";
 import { useRouter } from "next/navigation";
 import { type ReactElement, useState } from "react";
@@ -77,6 +78,13 @@ export function DesktopIcons({ archiveOpen, onReopenArchive, className }: Deskto
       onOpen: openRandom,
       hint: "随机打开一篇故事",
       disabled: randomState === "pending",
+    },
+    {
+      id: "feedback",
+      label: "灵感信箱",
+      icon: <Mail variant="32x32_4" width={32} height={32} aria-hidden />,
+      onOpen: () => router.push("/feedback"),
+      hint: "匿名提交反馈、资源或纠错",
     },
     {
       id: "about",

@@ -5,13 +5,649 @@
     ],
     "swagger": "2.0",
     "info": {
-        "description": "实验室科学史上的今天 · 公开 REST API",
+        "description": "实验室科学史上的今天 · 公开 REST API 与反馈/管理接口",
         "title": "biodays API",
         "contact": {},
         "version": "1.0"
     },
     "basePath": "/",
     "paths": {
+        "/api/v1/admin/feedback": {
+            "get": {
+                "description": "按新到旧排序，支持 kind/status/q 筛选与分页；列表不返回完整邮箱。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "反馈收件箱列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "反馈类型",
+                        "name": "kind",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "反馈状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminFeedbackListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/feedback/{id}": {
+            "get": {
+                "description": "返回完整投稿、联系方式、处理记录和邮件任务状态。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "反馈详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "反馈编号",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminFeedbackDetailResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "清理联系方式、订阅令牌、事件与未发送邮件，保留最小删除审计信息。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "删除反馈",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "反馈编号",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AcceptedResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "携带 version 做并发控制；状态变化时记录事件。只有已确认订阅且显式 notify_subscriber 时才排队用户邮件。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "更新反馈状态与备注",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "反馈编号",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "更新内容",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminPatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminUpdateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/login": {
+            "post": {
+                "description": "同源 JSON 请求；成功设置 HttpOnly + SameSite=Strict 会话 Cookie，返回 CSRF 令牌。失败尝试按 IP/账号独立限流。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员登录",
+                "parameters": [
+                    {
+                        "description": "账号密码",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.LoginRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminSessionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/logout": {
+            "post": {
+                "description": "立即撤销当前会话并清除 Cookie。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "管理员退出",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AcceptedResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/mail/outbox": {
+            "get": {
+                "description": "分页查看任务类型、状态、尝试次数与失败原因；不返回收件人与敏感 payload。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "邮件任务列表",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务类型",
+                        "name": "type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "任务状态",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.MailTaskListResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/mail/outbox/{id}/retry": {
+            "post": {
+                "description": "仅 failed/unknown 任务可重试；发送前由 worker 复查订阅与反馈状态。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "重试邮件任务",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "任务 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AcceptedResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/mail/status": {
+            "get": {
+                "description": "返回配置是否齐全、队列计数和最近错误；不返回任何口令。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "SMTP 配置与队列状态",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.MailStatusResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/mail/test": {
+            "post": {
+                "description": "仅发往配置的管理员接收地址，返回 202；调用方不能指定收件人。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "发送 SMTP 测试邮件",
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AcceptedResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/me": {
+            "get": {
+                "description": "返回管理员用户名、CSRF 令牌与过期时间；令牌不进入 localStorage。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "当前管理员会话",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminSessionResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/feedback": {
+            "post": {
+                "description": "无需注册。首次写入返回 201；相同 request_id 与相同内容的重试返回 200 与原回执；相同 request_id 不同内容返回 409。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback"
+                ],
+                "summary": "匿名提交反馈",
+                "parameters": [
+                    {
+                        "description": "反馈内容",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.submitRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.FeedbackReceiptResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.FeedbackReceiptResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/feedback/options": {
+            "get": {
+                "description": "返回反馈是否启用、是否支持邮件订阅、反馈类型和字段限制；不含任何 SMTP 凭据。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback"
+                ],
+                "summary": "反馈表单能力",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.FeedbackOptionsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/feedback/subscriptions/confirm": {
+            "post": {
+                "description": "GET 不修改状态；本接口由页面按钮 POST 调用，单次使用，重复确认返回稳定结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback"
+                ],
+                "summary": "确认邮件订阅",
+                "parameters": [
+                    {
+                        "description": "确认令牌",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.tokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.SubscriptionResultResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/feedback/subscriptions/resend": {
+            "post": {
+                "description": "始终返回 202，不泄露邮箱与反馈的对应关系；实际发送需匹配且通过频率限制。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback"
+                ],
+                "summary": "重发订阅确认邮件",
+                "parameters": [
+                    {
+                        "description": "反馈编号与邮箱",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.resendRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AcceptedResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/feedback/subscriptions/unsubscribe": {
+            "post": {
+                "description": "使用专用令牌，幂等；已退订时返回稳定结果。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback"
+                ],
+                "summary": "退订反馈邮件",
+                "parameters": [
+                    {
+                        "description": "退订令牌",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.tokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.SubscriptionResultResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/history": {
             "post": {
                 "description": "将已读 ID 保存到当前浏览器的 HttpOnly Cookie，90 天过期；不会写入 SQLite。",
@@ -29,7 +665,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.HistoryRequest"
+                            "$ref": "#/definitions/internal_handler.HistoryRequest"
                         }
                     }
                 ],
@@ -40,13 +676,13 @@
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -66,19 +702,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.MetaResponse"
+                            "$ref": "#/definitions/internal_handler.MetaResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -146,25 +782,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.StoryListResponse"
+                            "$ref": "#/definitions/internal_handler.StoryListResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -192,31 +828,31 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.StoryDTO"
+                            "$ref": "#/definitions/biodays_server_internal_model.StoryDTO"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -245,25 +881,25 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/model.StoryDTO"
+                            "$ref": "#/definitions/biodays_server_internal_model.StoryDTO"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -283,19 +919,19 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.TagsResponse"
+                            "$ref": "#/definitions/internal_handler.TagsResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -335,31 +971,31 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.TodayResponse"
+                            "$ref": "#/definitions/internal_handler.TodayResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "429": {
                         "description": "Too Many Requests",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {
-                            "$ref": "#/definitions/handler.ErrorResponse"
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
                     }
                 }
@@ -379,7 +1015,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.HealthResponse"
+                            "$ref": "#/definitions/internal_handler.HealthResponse"
                         }
                     }
                 }
@@ -399,13 +1035,13 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/handler.HealthResponse"
+                            "$ref": "#/definitions/internal_handler.HealthResponse"
                         }
                     },
                     "503": {
                         "description": "Service Unavailable",
                         "schema": {
-                            "$ref": "#/definitions/handler.HealthResponse"
+                            "$ref": "#/definitions/internal_handler.HealthResponse"
                         }
                     }
                 }
@@ -413,119 +1049,281 @@
         }
     },
     "definitions": {
-        "handler.ErrorBody": {
+        "biodays_server_internal_model.FeedbackDetailDTO": {
             "type": "object",
             "properties": {
-                "code": {
-                    "type": "string",
-                    "example": "STORY_NOT_FOUND"
+                "closed_at": {
+                    "type": "string"
                 },
-                "message": {
-                    "type": "string",
-                    "example": "story Q2-99 not found"
-                }
-            }
-        },
-        "handler.ErrorResponse": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "$ref": "#/definitions/handler.ErrorBody"
-                }
-            }
-        },
-        "handler.HealthResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "example": "ok"
-                }
-            }
-        },
-        "handler.HistoryRequest": {
-            "type": "object",
-            "required": [
-                "id"
-            ],
-            "properties": {
+                "confirmed_at": {
+                    "type": "string"
+                },
+                "consent_version": {
+                    "type": "string"
+                },
+                "consented_at": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "email_verified": {
+                    "type": "boolean"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.FeedbackEventDTO"
+                    }
+                },
                 "id": {
-                    "type": "string",
-                    "maxLength": 16
+                    "type": "string"
+                },
+                "internal_note": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "mail": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.MailTaskDTO"
+                    }
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "public_reply": {
+                    "type": "string"
+                },
+                "source_url": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "story_id": {
+                    "type": "string"
+                },
+                "subscription_status": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "unsubscribed_at": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
-        "handler.ListMeta": {
+        "biodays_server_internal_model.FeedbackEventDTO": {
             "type": "object",
             "properties": {
-                "page": {
+                "actor": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "from_status": {
+                    "type": "string"
+                },
+                "internal_note": {
+                    "type": "string"
+                },
+                "public_reply": {
+                    "type": "string"
+                },
+                "seq": {
+                    "type": "integer"
+                },
+                "to_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "biodays_server_internal_model.FeedbackKindOption": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "example": "想看话题"
+                },
+                "value": {
+                    "type": "string",
+                    "example": "topic"
+                }
+            }
+        },
+        "biodays_server_internal_model.FeedbackLimits": {
+            "type": "object",
+            "properties": {
+                "content_max": {
+                    "type": "integer",
+                    "example": 5000
+                },
+                "content_min": {
+                    "type": "integer",
+                    "example": 10
+                },
+                "nickname_max": {
+                    "type": "integer",
+                    "example": 40
+                },
+                "source_url_max": {
+                    "type": "integer",
+                    "example": 2048
+                },
+                "title_max": {
+                    "type": "integer",
+                    "example": 80
+                },
+                "title_min": {
                     "type": "integer",
                     "example": 1
-                },
-                "page_size": {
-                    "type": "integer",
-                    "example": 20
-                },
-                "total": {
-                    "type": "integer",
-                    "example": 104
                 }
             }
         },
-        "handler.MetaResponse": {
+        "biodays_server_internal_model.FeedbackListItemDTO": {
             "type": "object",
             "properties": {
-                "data": {
-                    "$ref": "#/definitions/model.Meta"
+                "created_at": {
+                    "type": "string"
+                },
+                "has_email": {
+                    "type": "boolean"
+                },
+                "has_nickname": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "story_id": {
+                    "type": "string"
+                },
+                "subscription_status": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         },
-        "handler.StoryListResponse": {
+        "biodays_server_internal_model.FeedbackOptionsDTO": {
             "type": "object",
             "properties": {
-                "data": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "kinds": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.StoryDTO"
+                        "$ref": "#/definitions/biodays_server_internal_model.FeedbackKindOption"
                     }
                 },
-                "meta": {
-                    "$ref": "#/definitions/handler.ListMeta"
+                "limits": {
+                    "$ref": "#/definitions/biodays_server_internal_model.FeedbackLimits"
+                },
+                "subscriptions_enabled": {
+                    "type": "boolean"
                 }
             }
         },
-        "handler.TagsResponse": {
+        "biodays_server_internal_model.MailStatusDTO": {
             "type": "object",
             "properties": {
-                "data": {
+                "configured": {
+                    "type": "boolean"
+                },
+                "counts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                },
+                "missing": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/model.TagCount"
+                        "type": "string"
                     }
-                }
-            }
-        },
-        "handler.TodayMeta": {
-            "type": "object",
-            "properties": {
-                "is_fallback": {
-                    "type": "boolean",
-                    "example": false
-                }
-            }
-        },
-        "handler.TodayResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/model.StoryDTO"
                 },
-                "meta": {
-                    "$ref": "#/definitions/handler.TodayMeta"
+                "notify_configured": {
+                    "type": "boolean"
+                },
+                "recent_errors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.MailTaskDTO"
+                    }
+                },
+                "smtp_enabled": {
+                    "type": "boolean"
                 }
             }
         },
-        "model.Meta": {
+        "biodays_server_internal_model.MailTaskDTO": {
+            "type": "object",
+            "properties": {
+                "attempts": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "next_attempt_at": {
+                    "type": "string"
+                },
+                "smtp_accepted_at": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "biodays_server_internal_model.Meta": {
             "type": "object",
             "properties": {
                 "coverage": {
@@ -558,7 +1356,7 @@
                 }
             }
         },
-        "model.Source": {
+        "biodays_server_internal_model.Source": {
             "type": "object",
             "properties": {
                 "citation": {
@@ -572,7 +1370,7 @@
                 }
             }
         },
-        "model.StoryDTO": {
+        "biodays_server_internal_model.StoryDTO": {
             "type": "object",
             "properties": {
                 "content": {
@@ -597,7 +1395,7 @@
                     "example": 1
                 },
                 "source": {
-                    "$ref": "#/definitions/model.Source"
+                    "$ref": "#/definitions/biodays_server_internal_model.Source"
                 },
                 "summary": {
                     "type": "string"
@@ -617,7 +1415,27 @@
                 }
             }
         },
-        "model.TagCount": {
+        "biodays_server_internal_model.SubmitReceiptDTO": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "9f2c1d7e8a4b"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "pending"
+                },
+                "subscription_status": {
+                    "type": "string",
+                    "example": "none"
+                }
+            }
+        },
+        "biodays_server_internal_model.TagCount": {
             "type": "object",
             "properties": {
                 "count": {
@@ -627,6 +1445,354 @@
                 "name": {
                     "type": "string",
                     "example": "仪器极客"
+                }
+            }
+        },
+        "internal_handler.AcceptedDTO": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "internal_handler.AcceptedResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handler.AcceptedDTO"
+                }
+            }
+        },
+        "internal_handler.AdminFeedbackDetailResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.FeedbackDetailDTO"
+                }
+            }
+        },
+        "internal_handler.AdminFeedbackListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.FeedbackListItemDTO"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.ListMeta"
+                }
+            }
+        },
+        "internal_handler.AdminPatchRequest": {
+            "type": "object",
+            "properties": {
+                "internal_note": {
+                    "type": "string"
+                },
+                "notify_subscriber": {
+                    "type": "boolean"
+                },
+                "public_reply": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.AdminSessionDTO": {
+            "type": "object",
+            "properties": {
+                "csrf_token": {
+                    "type": "string"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.AdminSessionResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handler.AdminSessionDTO"
+                }
+            }
+        },
+        "internal_handler.AdminUpdateMeta": {
+            "type": "object",
+            "properties": {
+                "notified": {
+                    "type": "boolean"
+                },
+                "notify_skipped_note": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.AdminUpdateResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.FeedbackDetailDTO"
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.AdminUpdateMeta"
+                }
+            }
+        },
+        "internal_handler.ErrorBody": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "STORY_NOT_FOUND"
+                },
+                "fields": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "message": {
+                    "type": "string",
+                    "example": "story Q2-99 not found"
+                }
+            }
+        },
+        "internal_handler.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "$ref": "#/definitions/internal_handler.ErrorBody"
+                }
+            }
+        },
+        "internal_handler.FeedbackOptionsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.FeedbackOptionsDTO"
+                }
+            }
+        },
+        "internal_handler.FeedbackReceiptResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.SubmitReceiptDTO"
+                }
+            }
+        },
+        "internal_handler.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                }
+            }
+        },
+        "internal_handler.HistoryRequest": {
+            "type": "object",
+            "required": [
+                "id"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "maxLength": 16
+                }
+            }
+        },
+        "internal_handler.ListMeta": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "page_size": {
+                    "type": "integer",
+                    "example": 20
+                },
+                "total": {
+                    "type": "integer",
+                    "example": 104
+                }
+            }
+        },
+        "internal_handler.LoginRequest": {
+            "type": "object",
+            "properties": {
+                "password": {
+                    "type": "string",
+                    "example": "correct horse battery staple"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "admin"
+                }
+            }
+        },
+        "internal_handler.MailStatusResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.MailStatusDTO"
+                }
+            }
+        },
+        "internal_handler.MailTaskListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.MailTaskDTO"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.ListMeta"
+                }
+            }
+        },
+        "internal_handler.MetaResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.Meta"
+                }
+            }
+        },
+        "internal_handler.StoryListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.StoryDTO"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.ListMeta"
+                }
+            }
+        },
+        "internal_handler.SubscriptionResultDTO": {
+            "type": "object",
+            "properties": {
+                "result": {
+                    "type": "string",
+                    "example": "confirmed"
+                },
+                "subscription_status": {
+                    "type": "string",
+                    "example": "confirmed"
+                }
+            }
+        },
+        "internal_handler.SubscriptionResultResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handler.SubscriptionResultDTO"
+                }
+            }
+        },
+        "internal_handler.TagsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.TagCount"
+                    }
+                }
+            }
+        },
+        "internal_handler.TodayMeta": {
+            "type": "object",
+            "properties": {
+                "is_fallback": {
+                    "type": "boolean",
+                    "example": false
+                }
+            }
+        },
+        "internal_handler.TodayResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.StoryDTO"
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.TodayMeta"
+                }
+            }
+        },
+        "internal_handler.resendRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "feedback_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.submitRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "nickname": {
+                    "type": "string"
+                },
+                "request_id": {
+                    "type": "string"
+                },
+                "source_url": {
+                    "type": "string"
+                },
+                "story_id": {
+                    "type": "string"
+                },
+                "subscribe_updates": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "website": {
+                    "description": "honeypot: must stay empty",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.tokenRequest": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
                 }
             }
         }

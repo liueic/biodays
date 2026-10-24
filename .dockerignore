@@ -10,6 +10,7 @@ docker-compose.yml
 seed-data/
 
 server/biodays.db*
+server/feedback.db*
 server/bin/
 server/coverage.out
 

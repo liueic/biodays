@@ -34,17 +34,18 @@ biodays/
 ├── .cnb.yml               CNB 流水线：检查、测试与容器镜像构建
 ├── .prototools            固定 Go (1.27.3) / Bun (1.4.4) 工具链版本
 ├── Dockerfile             单容器镜像（Next.js + Go API）
-├── docker-compose.yml     单个 app 服务，无需数据挂载
+├── docker-compose.yml     单个 app 服务 + 反馈库持久化卷
 ├── data/                  Git 管理的季度与主题故事 JSON（408 篇）
 ├── deploy/launcher.js     容器内进程 supervisor：启动 Go API，就绪后启动 Next
 ├── server/                Go module（module biodays/server）
-│   ├── cmd/biodays/       单二进制入口：serve（默认）/ seed / migrate 子命令
-│   ├── internal/          config · model · store · service · handler · middleware · router · seed
+│   ├── cmd/biodays/       单二进制入口：serve / seed / migrate / hash-password / cleanup / backup / restore
+│   ├── internal/          config · model · store · service · mailer · handler · middleware · router · seed
 │   └── docs/              swag 生成的 Swagger 文档（挂载于 /swagger/index.html）
 └── web/                   Next.js 16 + React 19 + Tailwind v4（Bun 管理）
-    ├── app/               今日 (/) / 档案 (/archive) / 详情 (/story/[id]) / 关于 (/about) / sitemap / robots
-    ├── components/        React95 桌面视窗组件、归档资源管理器、状态栏等
-    └── lib/               API client、日期与文本格式化工具
+    ├── app/(site)/        今日 (/) / 档案 (/archive) / 详情 (/story/[id]) / 关于 (/about)
+    ├── app/(private)/     灵感信箱 / 确认订阅 / 退订 / 管理员登录 / 收件箱 / 邮件状态
+    ├── components/        React95 桌面视窗、反馈表单、管理员收件箱、归档资源管理器
+    └── lib/               API client、反馈/管理请求封装、日期与文本工具
 ```
 
 ---
@@ -112,6 +113,23 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_TRUSTED_PROXIES` | 空 | 可信反向代理 IP/CIDR，多个以逗号分隔；仅对这些来源信任 `X-Forwarded-For` |
 | `BIODAYS_RATE_LIMIT` | `60` | 单 IP 每分钟限流请求数 |
 | `BIODAYS_LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
+| `BIODAYS_SITE_URL` | `http://localhost:3000` | 确认/退订链接使用的可信站点 origin，也用于校验管理写请求的 Origin |
+| `BIODAYS_FEEDBACK_ENABLED` | `false` | 是否启用匿名反馈与管理员后台；关闭时故事服务不受影响 |
+| `BIODAYS_FEEDBACK_DB_PATH` | `./feedback.db` | 独立反馈库；容器内为 `/var/lib/biodays/feedback.db` |
+| `BIODAYS_ADMIN_USERNAME` | 启用时必填 | 单管理员账号 |
+| `BIODAYS_ADMIN_PASSWORD_HASH` | 启用时必填 | 由 `biodays hash-password` 生成 |
+| `BIODAYS_ADMIN_SESSION_TTL` | `8h` | 管理员会话绝对有效期 |
+| `BIODAYS_ABUSE_KEY_SECRET` | 启用时必填 | ≥32 字节随机密钥，用于 IP/邮箱 HMAC 限流键与令牌指纹 |
+| `BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED` | `true` | 是否允许用户订阅；还需 SMTP 启用才展示订阅选项 |
+| `BIODAYS_SMTP_ENABLED` | `false` | 启用持久化邮件 worker；关闭时反馈仍保存、任务保留 |
+| `BIODAYS_SMTP_HOST` / `BIODAYS_SMTP_PORT` | 空 / `587` | 邮件服务商主机与端口 |
+| `BIODAYS_SMTP_TLS_MODE` | `starttls` | `starttls`（587）或 `implicit_tls`（465），禁止明文降级 |
+| `BIODAYS_SMTP_USERNAME` / `BIODAYS_SMTP_PASSWORD` | 空 | SMTP 认证账号；授权码只由部署环境注入 |
+| `BIODAYS_SMTP_FROM` | SMTP 启用时必填 | 站点固定发件地址，绝不使用用户邮箱作为 From |
+| `BIODAYS_FEEDBACK_NOTIFY_TO` | SMTP 启用时必填 | 管理员新反馈通知与测试邮件的唯一收件地址 |
+| `BIODAYS_SMTP_TIMEOUT` | `10s` | 连接与协议读写超时 |
+| `BIODAYS_FEEDBACK_SUBMIT_HOURLY` / `_DAILY` | `5` / `20` | 每 IP 投稿频控 |
+| `BIODAYS_FEEDBACK_RESEND_HOURLY` / `_DAILY` | `3` / `10` | 每收件人确认邮件频控 |
 | `GIN_MODE` | `release`（镜像内固定） | Gin 运行模式；未设置时 Gin 会退回 `debug` 并打印 `[GIN-debug]` 警告。镜像已固定为 `release`，本地开发想开调试路由日志时显式设为 `debug` |
 
 > 部署在 Nginx/Caddy 等反向代理后时，把代理地址加入 `BIODAYS_TRUSTED_PROXIES`（例如 `127.0.0.1/32,172.18.0.0/16`），限流才会按真实客户端 IP 生效。不要配置 `0.0.0.0/0`，否则 `X-Forwarded-For` 可被伪造。直连部署时保持为空即可。
@@ -123,6 +141,72 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_API_URL` | `http://127.0.0.1:8080` | SSR / ISR 数据抓取与 `/api` 代理目标 |
 | `BIODAYS_SITE_URL` | `http://localhost:3000` | canonical / OpenGraph / sitemap 站点根地址 |
 | `NEXT_PUBLIC_BIODAYS_DOCS_URL` | `/swagger/index.html` | 前端关于页与任务栏直达的 API 文档链接 |
+
+### 4. 匿名反馈与管理员后台（可选，默认关闭）
+
+访客无需注册即可提交反馈。昵称与邮箱只是这一条投稿的联系方式，不是账号；管理员使用独立后台登录。启用步骤：
+
+1. 生成管理员密码哈希（密码不会出现在命令参数、进程列表或镜像中）：
+
+   ```bash
+   cd server
+   go run ./cmd/biodays hash-password
+   # 交互输入两次；也支持管道：
+   printf 'your-long-password\n' | go run ./cmd/biodays hash-password
+   ```
+
+   bcrypt 输入上限为 72 字节，超过会明确报错而不是静默截断。
+
+2. 生成限流/指纹密钥（至少 32 字节）：
+
+   ```bash
+   openssl rand -base64 48
+   ```
+
+3. 在 `.env` / 运行环境中设置（完整列表见 `.env.example` 与上方环境变量表）：
+
+   ```bash
+   BIODAYS_FEEDBACK_ENABLED=true
+   BIODAYS_FEEDBACK_DB_PATH=./feedback.db
+   BIODAYS_ADMIN_USERNAME=admin
+   BIODAYS_ADMIN_PASSWORD_HASH='$2a$12$...'
+   BIODAYS_ABUSE_KEY_SECRET='...'
+   BIODAYS_SITE_URL=http://localhost:3000
+   ```
+
+4. 启动后端与前端，访问：
+
+   - `/feedback`：匿名投稿、订阅状态回执与重发确认邮件；
+   - `/feedback/confirm#token=…`：邮件中的确认链接（打开页面不会修改状态，点击按钮才 POST）；
+   - `/feedback/unsubscribe#token=…`：退订；
+   - `/admin/login`：管理员登录；
+   - `/admin/feedback`：Outlook Express 风格收件箱，列表与详情联动；
+   - `/admin/mail`：SMTP 配置、队列计数、最近错误、测试邮件与人工重试。
+
+5. 需要用户订阅处理结果时，再启用 SMTP：
+
+   ```bash
+   BIODAYS_SMTP_ENABLED=true
+   BIODAYS_SMTP_HOST=smtp.example.com
+   BIODAYS_SMTP_PORT=587
+   BIODAYS_SMTP_TLS_MODE=starttls   # 或 implicit_tls（465）
+   BIODAYS_SMTP_USERNAME=...
+   BIODAYS_SMTP_PASSWORD=...
+   BIODAYS_SMTP_FROM=notify@example.com
+   BIODAYS_FEEDBACK_NOTIFY_TO=admin@example.com
+   ```
+
+   部署后先在 `/admin/mail` 发送测试邮件。测试邮件和新反馈通知只发往 `BIODAYS_FEEDBACK_NOTIFY_TO`，调用方不能指定任意收件人。SMTP 关闭时，反馈仍会保存，管理员通知与确认任务保留在队列中，订阅选项不会展示，服务端也会拒绝新的 `subscribe_updates=true` 请求。
+
+行为约定：
+
+- 投稿使用 `request_id` 去重：相同 ID 与相同规范化内容返回原回执，不重复建记录或邮件；相同 ID 不同内容返回 409。函数内部在**同一事务**写入反馈、事件、令牌与 outbox，SMTP 不参与请求事务。
+- 订阅是双重确认：确认前不发送结果邮件。确认令牌 24 小时有效、单次使用；重发会作废旧令牌与旧任务。确认时若已有可通知状态，只补排队一次最新结果。
+- 邮件只在管理员明确勾选“保存并通知订阅者”且状态真正变化、订阅已确认时排队；内部备注、处理中状态、垃圾信息不会触发用户邮件。退订会立即取消尚未发送的用户邮件。
+- 邮件任务状态为 `pending` / `sending` / `sent` / `failed` / `unknown` / `cancelled`。临时错误最多尝试 5 次（1、5、30、120 分钟）；永久拒收直接失败；发送阶段断链标为 `unknown`，需管理员核对后重试，避免重复邮件。`sent` 仅表示 SMTP 已接受。
+- 保留策略：已关闭反馈的邮箱与昵称 90 天后清除并撤销订阅；邮件发送成功后立即清除敏感 payload；已投递/cancelled 任务元数据保留 30 天；过期会话、确认令牌与限流桶定期清理。可用 `biodays cleanup` 手动执行。
+- 敏感页面：`/admin/*`、确认与退订页不加载 Umami 统计或录制，设置 `X-Robots-Tag: noindex` 与 `Referrer-Policy: no-referrer`，并写入 `robots.txt` 排除规则。`/feedback` 公开可索引并加入 sitemap。
+- 请求日志不记录正文、完整邮箱、会话或订阅令牌；业务表不保存原始 IP。
 
 ---
 
@@ -179,7 +263,8 @@ curl 'http://localhost:8080/api/v1/today?fallback=none'
 ```bash
 # 后端：集成与单元测试、代码审查
 cd server
-go test ./...              # 覆盖全部端点、限流、CORS、400/404 分支（基于内存 SQLite）
+go test ./...              # 故事端点、反馈事务/去重/频控、订阅确认/退订、管理会话/CSRF、worker 重试
+go test -race ./...        # CI 使用的竞态检测
 go vet ./...
 
 # 前端：类型检查与 Biome 检查
@@ -217,13 +302,37 @@ BIODAYS_DATA_DIR=/path/to/data BIODAYS_DB_PATH=./biodays.db ./biodays serve
 ```bash
 docker build --platform linux/amd64 -t biodays .
 docker run -d --name biodays -p 127.0.0.1:8080:3000 \
+  -v biodays-feedback:/var/lib/biodays \
   -e BIODAYS_SITE_URL=https://biodays.example.com \
+  -e BIODAYS_FEEDBACK_ENABLED=true \
+  -e BIODAYS_ADMIN_USERNAME=admin \
+  -e BIODAYS_ADMIN_PASSWORD_HASH='$2a$12$...' \
+  -e BIODAYS_ABUSE_KEY_SECRET='...' \
   biodays
 ```
 
 打开同一个入口即可访问：`/`（前端）、`/api/v1/*`（API）、`/swagger/index.html`（文档）、`/readyz`（健康检查）。启动会校验数据库含有故事；空库会明确报错并退出，避免健康检查通过但今日接口持续 404。
 
 更新故事时修改 `data/stories_*.json` 并刷新 `data/manifest.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 不修改故事数据，浏览记录存储在浏览器 Cookie 中，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
+
+#### 反馈库持久化、备份与恢复
+
+反馈、管理员会话、订阅与邮件任务保存在独立的 `/var/lib/biodays/feedback.db`。`docker-compose.yml` 已挂载命名卷 `biodays-feedback`；镜像构建时创建目录并赋予运行用户 `65532` 写权限，首次空卷初始化的属主继承自镜像目录。不要用宿主目录覆盖 `/data`（故事库随镜像更新），只持久化 `/var/lib/biodays`。
+
+```bash
+# 一致性备份（VACUUM INTO，包含 WAL 中已提交的数据），默认保留 7 天
+biodays backup --dest /backups --keep 7
+
+# 恢复：先停服务，再替换目标库。restore 会撤销全部管理员会话，并把未完成邮件任务标为 unknown
+biodays restore --source /backups/20261024-120000-feedback.db \
+  --target /var/lib/biodays/feedback.db --kind feedback --force
+
+# 故事库同理（kind story，不需要吊销会话）
+biodays restore --source /backups/20261024-120000-biodays.db \
+  --target /data/biodays.db --kind story --force
+```
+
+恢复后请到 `/admin/mail` 人工核对被暂停的任务，确认没有重复投递后再重试。不要直接复制正在写入的主 DB 文件而忽略 `-wal` / `-shm`。镜像回滚时保留反馈卷；`/readyz` 在启用反馈后会同时检查故事库与反馈库，SMTP 可达性不参与 readiness，避免邮件故障导致站点反复重启。
 
 #### 持续更新故事
 
@@ -353,7 +462,12 @@ bun run start
    - 随机抽取先排除已读及显式 `exclude`，全部读完后清空本轮历史重新抽取，仍尽量避开当前篇；只有一篇或显式排除全部时保持原来的兜底行为。新故事自动作为未读候选。
    - Cookie 与账号、其他浏览器或设备不互通，清除 Cookie 会清空记录。为遵守浏览器容量限制，最多保存 2048 个 ID，压缩值不超过 3500 字节；未来数据超过容量时保留较新的记录。
    - 随机响应为 `no-store`，并保留 `Vary: Cookie`；浏览器随机请求也使用 `cache: no-store`。这是密码学随机抽样并结合已读去重，不宣称物理硬件真随机。
-6. **内容来源**：
+6. **反馈与邮件架构**：
+   - 故事库与反馈库完全分离：`store.Open` 只迁移 Story/Tag/Dataset；新增 `FeedbackStore` 使用 `feedback.db`（WAL、busy timeout、4 连接），故事删除不级联删除用户反馈，跨库只用字符串 ID 关联；
+   - 投稿在单事务内写 `feedbacks`、`feedback_events`、`subscription_tokens`、`mail_outbox`；outbox 使用唯一业务事件键去重，worker 与 API 同进程、单实例领取并以租约防重复；
+   - 管理会话只存令牌哈希，CSRF 由服务端密钥从会话哈希派生，Cookie 为 HttpOnly + SameSite=Strict + Path=/，HTTPS 下 Secure；每个管理 API 由 Go 强制执行认证，写接口额外校验 Origin 与 CSRF；
+   - 前端使用 `(site)` 与 `(private)` 两个根布局：只有阅读区加载 Umami 统计与录制，反馈/后台页面切换时整页重载，结束已加载的录制脚本；所有反馈/管理响应为 `no-store`，不继承故事路由的公开缓存。
+7. **内容来源**：
    - 条目内容均基于科学史专利、期刊论文、诺贝尔奖官方新闻稿及科研机构历史档案整理改写；单篇条目随 API 携带 citation 引用与原始链接。
 
 ---
@@ -361,4 +475,5 @@ bun run start
 ## 技术栈清单
 
 - **后端**：Go 1.27 · Gin v1.12 · GORM · `gorm.io/driver/sqlite` (CGO SQLite) · `caarlos0/env/v11` · `log/slog` · `swaggo/swag` · `stretchr/testify`
+- **邮件**：`github.com/wneessen/go-mail` v0.8.1 · 持久化 outbox · 租约 worker
 - **前端**：Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS v4 · `@react95/core` · `@react95/icons` · `@neodrag/react` · Fusion Pixel Font · TanStack Query · Bun · Biome

@@ -7,6 +7,7 @@ import { FileText } from "@react95/icons/FileText";
 import { Folder } from "@react95/icons/Folder";
 import { HelpBook } from "@react95/icons/HelpBook";
 import { Logo } from "@react95/icons/Logo";
+import { Mail } from "@react95/icons/Mail";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -60,12 +61,18 @@ export function DesktopTaskbar() {
   return (
     <nav ref={ref} className="desktop-taskbar" aria-label="桌面任务栏">
       {open && (
-        <Frame id="desktop-start-menu" boxShadow="$out" className="absolute bottom-7 left-0">
+        <Frame
+          id="desktop-start-menu"
+          boxShadow="$out"
+          bgColor="$material"
+          className="absolute bottom-7 left-0"
+        >
           <ul className="min-w-40 py-1">
             {[
               { label: "今日故事", path: "/", icon: <FileText variant="32x32_4" /> },
               { label: "归档", path: "/archive", icon: <Folder variant="32x32_4" /> },
               { label: "关于", path: "/about", icon: <FileFind variant="32x32_4" /> },
+              { label: "灵感信箱", path: "/feedback", icon: <Mail variant="32x32_4" /> },
             ].map((item) => (
               <li key={item.path}>
                 <button
@@ -78,7 +85,7 @@ export function DesktopTaskbar() {
                 </button>
               </li>
             ))}
-            <li className="mt-1 border-t border-[#868a8e] pt-1">
+            <li className="start-menu-divider mt-1 pt-1">
               <button
                 type="button"
                 className="menu-item flex w-full items-center gap-2 text-left"

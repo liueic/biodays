@@ -77,6 +77,11 @@ func (s *Store) Ping(ctx context.Context) error {
 	return s.db.WithContext(ctx).Raw("SELECT 1").Scan(&result).Error
 }
 
+// BackupTo writes a consistent snapshot with VACUUM INTO, including WAL data.
+func (s *Store) BackupTo(ctx context.Context, path string) error {
+	return s.db.WithContext(ctx).Exec("VACUUM INTO ?", path).Error
+}
+
 type ListFilter struct {
 	Month    *int
 	Day      *int
