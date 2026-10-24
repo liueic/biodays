@@ -109,7 +109,7 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_PORT` | `8080` | 服务监听端口 |
 | `BIODAYS_DB_PATH` | `./biodays.db` | SQLite 数据文件路径 |
 | `BIODAYS_DATA_DIR` | 必填（执行 seed 时） | 原始 `stories_*.json` 所在目录 |
-| `BIODAYS_CORS_ORIGINS` | `http://localhost:3000` | 跨域放行源，多个以逗号分隔，支持 `*` |
+| `BIODAYS_CORS_ORIGINS` | `http://localhost:3000` | 跨域放行源，多个以逗号分隔，支持 `*`；`BIODAYS_SITE_URL` 的 origin 会自动加入 |
 | `BIODAYS_TRUSTED_PROXIES` | 空 | 可信反向代理 IP/CIDR，多个以逗号分隔；仅对这些来源信任 `X-Forwarded-For` |
 | `BIODAYS_RATE_LIMIT` | `60` | 单 IP 每分钟限流请求数 |
 | `BIODAYS_LOG_LEVEL` | `info` | 日志级别：`debug` / `info` / `warn` / `error` |
@@ -167,12 +167,20 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 
    ```bash
    BIODAYS_FEEDBACK_ENABLED=true
-   BIODAYS_FEEDBACK_DB_PATH=./feedback.db
    BIODAYS_ADMIN_USERNAME=admin
    BIODAYS_ADMIN_PASSWORD_HASH='$2a$12$...'
    BIODAYS_ABUSE_KEY_SECRET='...'
+   # 本地 Next dev 用 3000；Docker Compose 用映射端口（默认 8080）或公网 origin
    BIODAYS_SITE_URL=http://localhost:3000
+   # 仅本地直接运行 Go 时使用；Docker Compose 已固定为 /var/lib/biodays/feedback.db
+   # BIODAYS_FEEDBACK_DB_PATH=./feedback.db
    ```
+
+   > **两个容易踩的坑**
+   > - bcrypt 哈希和含 `$` 的 SMTP 密码必须用**单引号**包住（或把每个 `$` 写成 `$$`）。否则 Docker Compose 会做变量插值，哈希/密码会被截断。
+   > - `BIODAYS_SITE_URL` 必须是浏览器实际访问的 origin（`scheme://host[:port]`，不要带路径或结尾 `/`）。确认/退订链接、canonical、sitemap 和管理端 Origin 校验都依赖它。
+   >
+   > Compose 通过 `BIODAYS_CORS_ORIGINS` 控制公开 API 跨域，默认 `*` 与镜像既有行为一致；站点自身 origin 会自动并入允许列表。
 
 4. 启动后端与前端，访问：
 
@@ -191,7 +199,7 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
    BIODAYS_SMTP_PORT=587
    BIODAYS_SMTP_TLS_MODE=starttls   # 或 implicit_tls（465）
    BIODAYS_SMTP_USERNAME=...
-   BIODAYS_SMTP_PASSWORD=...
+   BIODAYS_SMTP_PASSWORD='...'   # 含 $ 的授权码必须用单引号
    BIODAYS_SMTP_FROM=notify@example.com
    BIODAYS_FEEDBACK_NOTIFY_TO=admin@example.com
    ```

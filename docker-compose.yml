@@ -4,8 +4,11 @@
 #   docker.cnb.cool/ciallo.cv/biodays:<tag>
 #
 # 用法：
-#   cp .env.example .env   # 设置 BIODAYS_SITE_URL
+#   cp .env.example .env   # 至少设置 BIODAYS_SITE_URL
 #   docker compose pull && docker compose up -d
+#
+# 注意：.env 中的 bcrypt 哈希和含 $ 的 SMTP 密码必须用单引号包住，
+# 例如 BIODAYS_ADMIN_PASSWORD_HASH='$2a$12$...'；否则 Compose 会做变量插值。
 #
 # 镜像私有化时需先登录（访问令牌见 CNB「个人设置 / 访问令牌」）：
 #   docker login docker.cnb.cool -u cnb -p <访问令牌>
@@ -26,11 +29,17 @@ services:
         max-file: "3"
     init: true
     restart: unless-stopped
+    # Go 侧优雅退出最多等 10s，launcher 再等子进程；给足停止时间，避免 worker 被强杀。
+    stop_grace_period: 20s
     ports:
       - "${BIODAYS_BIND_IP:-127.0.0.1}:${BIODAYS_HTTP_PORT:-8080}:3000"
     environment:
       BIODAYS_DB_PATH: /data/biodays.db
+      # 浏览器实际访问的 origin；确认/退订链接和管理端 Origin 校验都依赖它。
       BIODAYS_SITE_URL: ${BIODAYS_SITE_URL:-http://localhost:8080}
+      # 公开 API 的 CORS；站点自身 origin 会自动并入允许列表。
+      # 默认 * 与镜像既有行为一致；需要收紧时填逗号分隔的 origin。
+      BIODAYS_CORS_ORIGINS: ${BIODAYS_CORS_ORIGINS:-*}
       BIODAYS_RATE_LIMIT: ${BIODAYS_RATE_LIMIT:-60}
       BIODAYS_LOG_LEVEL: ${BIODAYS_LOG_LEVEL:-info}
       BIODAYS_TRUSTED_PROXIES: ${BIODAYS_TRUSTED_PROXIES:-127.0.0.1,::1}
@@ -38,6 +47,7 @@ services:
       BIODAYS_FEEDBACK_ENABLED: ${BIODAYS_FEEDBACK_ENABLED:-false}
       BIODAYS_FEEDBACK_DB_PATH: /var/lib/biodays/feedback.db
       BIODAYS_ADMIN_USERNAME: ${BIODAYS_ADMIN_USERNAME:-}
+      # 含 $，.env 中用单引号或把每个 $ 写成 $$。
       BIODAYS_ADMIN_PASSWORD_HASH: ${BIODAYS_ADMIN_PASSWORD_HASH:-}
       BIODAYS_ADMIN_SESSION_TTL: ${BIODAYS_ADMIN_SESSION_TTL:-8h}
       BIODAYS_ABUSE_KEY_SECRET: ${BIODAYS_ABUSE_KEY_SECRET:-}
@@ -51,6 +61,7 @@ services:
       BIODAYS_SMTP_PORT: ${BIODAYS_SMTP_PORT:-587}
       BIODAYS_SMTP_TLS_MODE: ${BIODAYS_SMTP_TLS_MODE:-starttls}
       BIODAYS_SMTP_USERNAME: ${BIODAYS_SMTP_USERNAME:-}
+      # 含 $ 的授权码同样需要单引号转义。
       BIODAYS_SMTP_PASSWORD: ${BIODAYS_SMTP_PASSWORD:-}
       BIODAYS_SMTP_FROM: ${BIODAYS_SMTP_FROM:-}
       BIODAYS_FEEDBACK_NOTIFY_TO: ${BIODAYS_FEEDBACK_NOTIFY_TO:-}
