@@ -1,19 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
 
 import { AppShell } from "@/components/app-shell";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
-
-import "../globals.css";
-import "../react95-global.css";
-import "@react95/core/themes/win95.css";
-
-const pixelUI = localFont({
-  src: "../fonts/pixel-ui.woff2",
-  variable: "--font-pixel-ui",
-  display: "swap",
-  adjustFontFallback: false,
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -30,15 +18,9 @@ export const viewport: Viewport = {
   themeColor: "#008080",
 };
 
-// Private root layout: no analytics or session-recording scripts here. Moving
-// between the reading layout and this one is a full document load, which also
-// unloads any recorder started on a story page.
+// Private layout: no analytics or session-recording scripts here. Anchors
+// into the (site) group stay plain links so the recorder, when it was ever
+// loaded there, keeps being unloaded on the way in.
 export default function PrivateLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="zh-CN" className={pixelUI.variable} suppressHydrationWarning>
-      <body className="flex min-h-svh flex-col">
-        <AppShell>{children}</AppShell>
-      </body>
-    </html>
-  );
+  return <AppShell>{children}</AppShell>;
 }

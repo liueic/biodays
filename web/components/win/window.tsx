@@ -15,7 +15,9 @@ const MENU = [
   { href: "/", label: "今日", key: "T" },
   { href: "/archive", label: "归档", key: "A" },
   { href: "/about", label: "关于", key: "B" },
-  { href: "/feedback", label: "反馈", key: "F" },
+  // external marks links into the (private) group: they must be full page
+  // loads so the session recorder loaded in the reading layout unloads.
+  { href: "/feedback", label: "反馈", key: "F", external: true },
 ];
 
 type WindowProps = {
@@ -82,14 +84,27 @@ export function Window({
       <nav aria-label="主菜单" className="flex gap-1 px-1 py-1">
         {MENU.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+          const className = "menu-item";
+          const content = (
+            <>
+              {item.label}({item.key})
+            </>
+          );
+          if (item.external) {
+            return (
+              <a key={item.href} href={item.href} className={className}>
+                {content}
+              </a>
+            );
+          }
           return (
             <Link
               key={item.href}
               href={item.href}
-              className="menu-item"
+              className={className}
               aria-current={active ? "page" : undefined}
             >
-              {item.label}({item.key})
+              {content}
             </Link>
           );
         })}

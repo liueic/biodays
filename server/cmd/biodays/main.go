@@ -36,7 +36,9 @@ import (
 	"biodays/server/internal/antispam"
 	"biodays/server/internal/config"
 	"biodays/server/internal/mailer"
+	"biodays/server/internal/model"
 	"biodays/server/internal/router"
+	"biodays/server/internal/security"
 	"biodays/server/internal/seed"
 	"biodays/server/internal/service"
 	"biodays/server/internal/store"
@@ -51,6 +53,9 @@ commands:
   seed [--strict] import stories_*.json; --strict rejects skipped/failed/empty input
   migrate        create/update the database schema and exit
   hash-password  read a password from the terminal or stdin and print a bcrypt hash
+  admin set-password [--username NAME] [--stdin]
+                 create or replace the administrator account (interactive;
+                 --stdin reads one line for scripting)
   cleanup        delete expired sessions/tokens, scrub closed feedback, prune mail payloads
   backup         write consistent SQLite snapshots and keep the last 7 days
   restore        replace a database from a backup (requires --force when target exists)
@@ -72,6 +77,8 @@ func main() {
 		migrate()
 	case "hash-password":
 		hashPassword()
+	case "admin":
+		runAdmin(args[1:])
 	case "cleanup":
 		runCleanup()
 	case "backup":
@@ -138,23 +145,16 @@ func openFeedbackStore(cfg config.Config, logger *slog.Logger) *store.FeedbackSt
 // autoSeed imports stories when BIODAYS_DATA_DIR points at a directory that
 // actually contains stories_*.json files. Without a source directory, validate
 // the database bundled in the image instead.
+//
+// Imports are incremental on every backend: while the stored dataset version
+// matches the corpus fingerprint nothing happens, and when a new corpus ships
+// only new or unchanged stories are upserted. Administrator edits and
+// deletions survive (admin_edited flags and tombstones), so restarting with
+// BIODAYS_DATA_DIR set never reverts live data. The explicit `biodays seed`
+// command remains a full reset to the dataset canon.
 func autoSeed(ctx context.Context, st *store.Store, cfg config.Config, logger *slog.Logger) error {
 	if cfg.DataDir == "" {
 		return checkStoryData(ctx, st, logger)
-	}
-	// On PostgreSQL the database outlives the process and holds edits made via
-	// the admin API; importing on every start would revert them to the bundled
-	// JSON. Seed only an empty database (first boot).
-	if cfg.UsingPostgres() {
-		total, _, err := st.Stats(ctx)
-		if err != nil {
-			return fmt.Errorf("check story data: %w", err)
-		}
-		if total > 0 {
-			logger.Info("story data present; skipping first-boot import", "total", total)
-			return nil
-		}
-		logger.Info("empty story database; importing bundled JSON", "dir", cfg.DataDir)
 	}
 	files, err := filepath.Glob(filepath.Join(cfg.DataDir, "stories_*.json"))
 	if err != nil {
@@ -162,16 +162,22 @@ func autoSeed(ctx context.Context, st *store.Store, cfg config.Config, logger *s
 	}
 	if len(files) == 0 {
 		logger.Warn("auto-seed: no stories_*.json found; check data mount and permissions", "dir", cfg.DataDir)
+		return checkStoryData(ctx, st, logger)
+	}
+	logger.Info("auto-seed starting", "dir", cfg.DataDir, "files", len(files))
+	report, err := seed.RunIncremental(ctx, st, cfg.DataDir, logger)
+	if err != nil {
+		return err
+	}
+	if report.Unchanged {
+		logger.Info("auto-seed: dataset unchanged; skipping import", "version", report.Version)
 	} else {
-		logger.Info("auto-seed starting", "dir", cfg.DataDir, "files", len(files))
-		report, err := seed.Run(ctx, st, cfg.DataDir, logger)
-		if err != nil {
-			return err
-		}
 		logger.Info("auto-seed finished",
 			"imported", report.Imported,
+			"preserved", report.Preserved,
 			"skipped", report.Skipped,
-			"files", report.Files,
+			"failed_files", report.FailedFiles,
+			"version", report.Version,
 		)
 	}
 	return checkStoryData(ctx, st, logger)
@@ -242,6 +248,68 @@ func serve() {
 
 // startFeedback opens feedback.db, starts the mail worker and returns a stop
 // function that drains the worker before the process exits.
+// abuseSecretSettingKey is the app_settings key holding the generated HMAC key.
+const abuseSecretSettingKey = "abuse_secret"
+
+// ensureAbuseSecret resolves the abuse HMAC key: an explicit environment value
+// wins, otherwise a random key is generated once and persisted in the database
+// so restarts and container replacements keep sessions and rate limits stable.
+func ensureAbuseSecret(ctx context.Context, feedbackStore *store.FeedbackStore, cfg config.Config) ([]byte, string) {
+	if len(cfg.AbuseKeySecret) >= 32 {
+		return []byte(cfg.AbuseKeySecret), "environment"
+	}
+	stored, err := feedbackStore.GetAppSetting(ctx, abuseSecretSettingKey)
+	if err != nil {
+		logger := slog.Default()
+		logger.Error("read abuse secret setting", "error", err)
+		os.Exit(1)
+	}
+	if stored != "" {
+		return []byte(stored), "database"
+	}
+	generated, err := security.RandomToken()
+	if err != nil {
+		slog.Default().Error("generate abuse secret", "error", err)
+		os.Exit(1)
+	}
+	if err := feedbackStore.SetAppSetting(ctx, abuseSecretSettingKey, generated, time.Now()); err != nil {
+		slog.Default().Error("persist abuse secret", "error", err)
+		os.Exit(1)
+	}
+	return []byte(generated), "generated"
+}
+
+// ensureAdminBootstrap imports legacy environment credentials into the
+// database on first boot and logs the resulting account state. Once a
+// database row exists the environment values are ignored for good.
+func ensureAdminBootstrap(ctx context.Context, feedbackStore *store.FeedbackStore, cfg config.Config, logger *slog.Logger) {
+	existing, err := feedbackStore.GetAdminUser(ctx)
+	if err != nil {
+		logger.Error("read admin account", "error", err)
+		os.Exit(1)
+	}
+	if existing != nil {
+		if strings.TrimSpace(cfg.AdminUsername) != "" {
+			logger.Info("admin account is initialized in the database; BIODAYS_ADMIN_* environment values are ignored",
+				"username", existing.Username)
+		}
+		return
+	}
+	if strings.TrimSpace(cfg.AdminUsername) != "" && strings.TrimSpace(cfg.AdminPasswordHash) != "" {
+		now := time.Now().UTC()
+		if err := feedbackStore.UpsertAdminUser(ctx, &model.AdminUser{
+			Username: strings.TrimSpace(cfg.AdminUsername), PasswordHash: cfg.AdminPasswordHash,
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			logger.Error("import admin account from environment", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("admin account imported from environment", "username", strings.TrimSpace(cfg.AdminUsername))
+		return
+	}
+	logger.Warn("admin account is not initialized; run 'biodays admin set-password' (docker compose exec app biodays admin set-password) to enable admin login")
+}
+
 func startFeedback(cfg config.Config, logger *slog.Logger) (router.Deps, func()) {
 	if !cfg.FeedbackEnabled {
 		if cfg.SMTPEnabled {
@@ -251,7 +319,10 @@ func startFeedback(cfg config.Config, logger *slog.Logger) (router.Deps, func())
 	}
 
 	feedbackStore := openFeedbackStore(cfg, logger)
-	secret := []byte(cfg.AbuseKeySecret)
+	ctx := context.Background()
+	secret, secretSource := ensureAbuseSecret(ctx, feedbackStore, cfg)
+	logger.Info("abuse hmac key ready", "source", secretSource)
+	ensureAdminBootstrap(ctx, feedbackStore, cfg, logger)
 
 	adminService := service.NewAdminService(feedbackStore, service.AdminSettings{
 		Username: cfg.AdminUsername, PasswordHash: cfg.AdminPasswordHash,
@@ -368,36 +439,7 @@ func startFeedback(cfg config.Config, logger *slog.Logger) (router.Deps, func())
 }
 
 func hashPassword() {
-	reader := bufio.NewReader(os.Stdin)
-	var password string
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Fprint(os.Stderr, "Password: ")
-		raw, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "read password:", err)
-			os.Exit(1)
-		}
-		password = string(raw)
-		fmt.Fprint(os.Stderr, "Confirm password: ")
-		confirm, err := term.ReadPassword(int(os.Stdin.Fd()))
-		fmt.Fprintln(os.Stderr)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "read password:", err)
-			os.Exit(1)
-		}
-		if string(confirm) != password {
-			fmt.Fprintln(os.Stderr, "passwords do not match")
-			os.Exit(1)
-		}
-	} else {
-		line, err := reader.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			fmt.Fprintln(os.Stderr, "read password:", err)
-			os.Exit(1)
-		}
-		password = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-	}
+	password := readPasswordInput("Password: ", "Confirm password: ", true)
 	if password == "" {
 		fmt.Fprintln(os.Stderr, "password is empty")
 		os.Exit(1)
@@ -408,6 +450,113 @@ func hashPassword() {
 		os.Exit(1)
 	}
 	fmt.Println(hash)
+}
+
+// readPasswordInput reads a password either interactively (hidden input with
+// confirmation) or as one line from a piped stdin. With confirm disabled the
+// single prompt is skipped, which keeps scripted usage terse.
+func readPasswordInput(prompt, confirmPrompt string, confirm bool) string {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			fmt.Fprintln(os.Stderr, "read password:", err)
+			os.Exit(1)
+		}
+		return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
+	}
+	read := func(p string) string {
+		fmt.Fprint(os.Stderr, p)
+		raw, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "read password:", err)
+			os.Exit(1)
+		}
+		return string(raw)
+	}
+	password := read(prompt)
+	if confirm {
+		if second := read(confirmPrompt); second != password {
+			fmt.Fprintln(os.Stderr, "passwords do not match")
+			os.Exit(1)
+		}
+	}
+	return password
+}
+
+// runAdmin implements `biodays admin set-password`: the supported way to
+// create or rotate the administrator account. The account lives in the
+// database, so no environment juggling or bcrypt quoting is required:
+//
+//	biodays admin set-password                     # interactive
+//	echo 'new-password' | biodays admin set-password --stdin
+//	docker compose exec app biodays admin set-password
+func runAdmin(args []string) {
+	flags := flag.NewFlagSet("admin", flag.ExitOnError)
+	subcommand := "set-password"
+	rest := args
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		subcommand = args[0]
+		rest = args[1:]
+	}
+	if subcommand != "set-password" {
+		fmt.Fprintf(os.Stderr, "unknown admin subcommand %q; only set-password is supported\n", subcommand)
+		os.Exit(2)
+	}
+	username := flags.String("username", envOr("BIODAYS_ADMIN_USERNAME", "admin"), "administrator account name")
+	stdin := flags.Bool("stdin", false, "read the password as one line from stdin instead of prompting")
+	flags.Parse(rest)
+	if strings.TrimSpace(*username) == "" {
+		fmt.Fprintln(os.Stderr, "admin: --username must not be empty")
+		os.Exit(1)
+	}
+
+	var password string
+	if *stdin {
+		password = readPasswordInput("", "", false)
+	} else {
+		password = readPasswordInput("New password: ", "Confirm new password: ", true)
+	}
+	if password == "" {
+		fmt.Fprintln(os.Stderr, "password is empty")
+		os.Exit(1)
+	}
+	hash, err := service.HashPassword(password)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hash password:", err)
+		os.Exit(1)
+	}
+
+	feedbackStore := openFeedbackStoreForTools()
+	defer feedbackStore.Close()
+	now := time.Now().UTC()
+	if err := feedbackStore.UpsertAdminUser(context.Background(), &model.AdminUser{
+		Username: strings.TrimSpace(*username), PasswordHash: hash, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "admin set-password:", err)
+		os.Exit(1)
+	}
+	fmt.Printf("administrator account saved: %s\n", strings.TrimSpace(*username))
+	fmt.Fprintln(os.Stderr, "existing admin sessions were revoked; log in again with the new password")
+}
+
+// openFeedbackStoreForTools opens the feedback database for CLI tools without
+// requiring the full serve configuration.
+func openFeedbackStoreForTools() *store.FeedbackStore {
+	var (
+		feedbackStore *store.FeedbackStore
+		err           error
+	)
+	if dsn := strings.TrimSpace(os.Getenv("BIODAYS_DB_DSN")); dsn != "" {
+		feedbackStore, err = store.OpenFeedbackPostgres(dsn)
+	} else {
+		feedbackStore, err = store.OpenFeedback(envOr("BIODAYS_FEEDBACK_DB_PATH", "./feedback.db"))
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "open feedback database:", err)
+		os.Exit(1)
+	}
+	return feedbackStore
 }
 
 func runSeed(args []string) {

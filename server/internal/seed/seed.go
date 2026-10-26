@@ -16,11 +16,17 @@ import (
 )
 
 type Report struct {
-	Files       int
-	Imported    int
-	Skipped     int
+	Files    int
+	Imported int
+	Skipped  int
+	// Preserved counts stories an incremental import left untouched because
+	// an administrator edited or deleted them.
+	Preserved   int
 	FailedFiles int
 	Version     string
+	// Unchanged reports that the dataset fingerprint matched the stored
+	// version and no import ran at all.
+	Unchanged bool
 }
 
 // SourceInput is the citation block of a story (JSON import and admin API).
@@ -99,7 +105,7 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 			}
 
 			story, tags := StoryToModel(entry)
-			if err := st.Upsert(ctx, story, tags); err != nil {
+			if err := st.Upsert(ctx, story, tags, true, false); err != nil {
 				return report, fmt.Errorf("upsert %s: %w", entry.ID, err)
 			}
 			seenIDs[entry.ID] = filepath.Base(file)
@@ -110,10 +116,120 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 	if err := st.CleanupOrphanTags(ctx); err != nil {
 		return report, fmt.Errorf("cleanup orphan tags: %w", err)
 	}
+	// A manual seed is an explicit reset to the dataset canon: deleted
+	// bundled stories come back, admin edits are overwritten.
+	if err := st.ClearTombstones(ctx); err != nil {
+		return report, fmt.Errorf("clear tombstones: %w", err)
+	}
 	if fingerprintErr == nil && report.Skipped == 0 && report.FailedFiles == 0 && report.Imported > 0 {
 		if manifest != nil && manifest.Total != report.Imported {
 			return report, fmt.Errorf("dataset count differs from manifest: imported=%d expected=%d", report.Imported, manifest.Total)
 		}
+		if err := st.SetDatasetVersion(ctx, version); err != nil {
+			return report, err
+		}
+		report.Version = version
+	}
+	return report, nil
+}
+
+// RunIncremental imports the dataset the way `serve` does at startup: it is a
+// no-op while the stored dataset version matches the corpus fingerprint, and
+// otherwise upserts only new or unchanged stories. Stories an administrator
+// edited through the admin API are preserved, deleted bundled stories stay
+// deleted (tombstones), and admin-added stories are never removed. This makes
+// the JSON corpus a forward-only seed on every backend, including ones whose
+// database outlives the process (PostgreSQL).
+func RunIncremental(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logger) (Report, error) {
+	pattern := filepath.Join(dataDir, "stories_*.json")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return Report{}, fmt.Errorf("glob %s: %w", pattern, err)
+	}
+	if len(files) == 0 {
+		return Report{}, fmt.Errorf("no stories_*.json found in %s", dataDir)
+	}
+	sort.Strings(files)
+	version, _, fingerprintErr := fingerprint(files, dataDir)
+	if fingerprintErr != nil {
+		// A bundled corpus carries a manifest; a stale one must fail loudly
+		// instead of importing data the build never verified.
+		if _, statErr := os.Stat(filepath.Join(dataDir, "manifest.json")); !os.IsNotExist(statErr) {
+			return Report{}, fingerprintErr
+		}
+	}
+	current, err := st.DatasetVersion(ctx)
+	if err != nil {
+		return Report{}, fmt.Errorf("read dataset version: %w", err)
+	}
+	if current != "" && current == version {
+		return Report{Files: len(files), Version: version, Unchanged: true}, nil
+	}
+
+	flags, err := st.StoryFlags(ctx)
+	if err != nil {
+		return Report{}, fmt.Errorf("load story flags: %w", err)
+	}
+	tombstones, err := st.Tombstones(ctx)
+	if err != nil {
+		return Report{}, fmt.Errorf("load tombstones: %w", err)
+	}
+
+	report := Report{Files: len(files)}
+	seenIDs := make(map[string]string, 208)
+	for _, file := range files {
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			report.FailedFiles++
+			logger.Warn("seed: cannot read file", "file", file, "error", err)
+			continue
+		}
+		var entries []StoryInput
+		if err := json.Unmarshal(raw, &entries); err != nil {
+			report.FailedFiles++
+			logger.Warn("seed: cannot parse file", "file", file, "error", err)
+			continue
+		}
+		for index, entry := range entries {
+			label := entry.ID
+			if label == "" {
+				label = fmt.Sprintf("%s[%d]", filepath.Base(file), index)
+			}
+			if problems := ValidateStory(entry); len(problems) > 0 {
+				report.Skipped++
+				logger.Warn("seed: skipped invalid story", "story", label, "problems", problems)
+				continue
+			}
+			entry.ID = strings.TrimSpace(entry.ID)
+			if previous, duplicate := seenIDs[entry.ID]; duplicate {
+				report.Skipped++
+				logger.Warn("seed: skipped duplicate id", "story", entry.ID, "first_seen_in", previous)
+				continue
+			}
+			seenIDs[entry.ID] = filepath.Base(file)
+			if tombstones[entry.ID] {
+				report.Preserved++
+				continue
+			}
+			if flag, exists := flags[entry.ID]; exists && flag.AdminEdited {
+				report.Preserved++
+				logger.Info("seed: kept admin-edited story", "story", entry.ID)
+				continue
+			}
+			story, tags := StoryToModel(entry)
+			if err := st.Upsert(ctx, story, tags, true, false); err != nil {
+				return report, fmt.Errorf("upsert %s: %w", entry.ID, err)
+			}
+			report.Imported++
+		}
+	}
+
+	if err := st.CleanupOrphanTags(ctx); err != nil {
+		return report, fmt.Errorf("cleanup orphan tags: %w", err)
+	}
+	// Skip the manifest total check on purpose: preserved admin edits make the
+	// imported count legitimately differ from the corpus total.
+	if fingerprintErr == nil && report.FailedFiles == 0 {
 		if err := st.SetDatasetVersion(ctx, version); err != nil {
 			return report, err
 		}

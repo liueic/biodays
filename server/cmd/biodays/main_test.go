@@ -31,7 +31,7 @@ func TestStartupUsesBundledDatabaseWithoutSeedDirectory(t *testing.T) {
 	defer st.Close()
 	require.NoError(t, st.Upsert(context.Background(), &model.Story{
 		ID: "Q1-01", Month: 1, Day: 5, Year: 1961, Title: "bundled story",
-	}, nil))
+	}, nil, true, false))
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	require.NoError(t, autoSeed(context.Background(), st, config.Config{}, logger))
 }

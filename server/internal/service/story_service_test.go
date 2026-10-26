@@ -28,7 +28,7 @@ func seedStory(t *testing.T, st *store.Store, id string, month, day, year int) {
 	require.NoError(t, st.Upsert(context.Background(), &model.Story{
 		ID: id, Month: month, Day: day, Year: year,
 		Title: id, Content: "content", GeekQuote: "quote",
-	}, []string{"tag"}))
+	}, []string{"tag"}, false, false))
 }
 
 func TestParseOffset(t *testing.T) {

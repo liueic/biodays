@@ -62,7 +62,8 @@ services:
       # 镜像内固定路径；PostgreSQL 模式下两个 SQLite 路径被忽略。
       BIODAYS_DB_PATH: /data/biodays.db
       BIODAYS_FEEDBACK_DB_PATH: /var/lib/biodays/feedback.db
-      # 镜像内置 JSON 语料：PostgreSQL 空库首启时导入，之后不再覆盖管理员的修改。
+      # 镜像内置 JSON 语料：启动时增量导入（新语料随镜像下发，管理员编辑/删除不会被覆盖）。
+      # 指纹一致时零导入。
       BIODAYS_DATA_DIR: /stories-data
       # 故事与反馈同库。要临时回退单容器 SQLite 模式：注释本行与 db 服务/depends_on。
       BIODAYS_DB_DSN: postgres://biodays:${BIODAYS_POSTGRES_PASSWORD}@db:5432/biodays

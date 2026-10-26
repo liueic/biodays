@@ -24,6 +24,7 @@ const (
 	CodeIdempotencyConflict     = "IDEMPOTENCY_CONFLICT"
 	CodePayloadTooLarge         = "PAYLOAD_TOO_LARGE"
 	CodeFeedbackUnavailable     = "FEEDBACK_UNAVAILABLE"
+	CodeAdminNotInitialized     = "ADMIN_NOT_INITIALIZED"
 	CodeUnsupportedMediaType    = "UNSUPPORTED_MEDIA_TYPE"
 	CodeChallengeDisabled       = "CHALLENGE_DISABLED"
 	CodeChallengeRequired       = "CHALLENGE_REQUIRED"

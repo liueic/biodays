@@ -47,7 +47,7 @@ func TestPostgresIntegration(t *testing.T) {
 			Title: "移液器", Content: "content", GeekQuote: "quote",
 			SourceType: "patent",
 		}
-		require.NoError(t, st.Upsert(ctx, story, []string{"仪器极客"}))
+		require.NoError(t, st.Upsert(ctx, story, []string{"仪器极客"}, true, false))
 
 		loaded, err := st.GetByID(ctx, "PG-01")
 		require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestPostgresIntegration(t *testing.T) {
 		require.Len(t, loaded.Tags, 1)
 
 		story.Title = "更新后"
-		require.NoError(t, st.Upsert(ctx, story, []string{"仪器极客", "工业设计"}))
+		require.NoError(t, st.Upsert(ctx, story, []string{"仪器极客", "工业设计"}, true, false))
 		loaded, err = st.GetByID(ctx, "PG-01")
 		require.NoError(t, err)
 		require.Equal(t, "更新后", loaded.Title)

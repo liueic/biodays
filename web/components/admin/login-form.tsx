@@ -34,6 +34,10 @@ export function LoginForm() {
           setError("账号或密码不正确。");
         } else if (reason.status === 403) {
           setError("请求来源校验失败，请从本站登录页重试。");
+        } else if (reason.code === "ADMIN_NOT_INITIALIZED") {
+          setError("管理员账号尚未初始化：请在服务器上运行 biodays admin set-password 后重试。");
+        } else if (reason.status >= 500) {
+          setError("服务器开小差了，请稍后重试。");
         } else {
           setError(reason.message);
         }

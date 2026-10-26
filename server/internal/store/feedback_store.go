@@ -76,6 +76,7 @@ func newFeedbackStore(db *gorm.DB) (*FeedbackStore, error) {
 		&model.Feedback{}, &model.FeedbackEvent{}, &model.AdminSession{},
 		&model.SubscriptionToken{}, &model.MailOutbox{}, &model.AbuseBucket{},
 		&model.FeedbackChallenge{}, &model.FeedbackDeletion{},
+		&model.AdminUser{}, &model.AppSetting{},
 	); err != nil {
 		return nil, err
 	}
@@ -435,6 +436,53 @@ func (s *FeedbackStore) CreateSession(ctx context.Context, session *model.AdminS
 	return s.db.WithContext(ctx).Create(session).Error
 }
 
+// GetAdminUser returns the configured administrator account, or nil when none
+// exists yet (fresh deployment, `biodays admin set-password` not run).
+func (s *FeedbackStore) GetAdminUser(ctx context.Context) (*model.AdminUser, error) {
+	var user model.AdminUser
+	err := s.db.WithContext(ctx).First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// UpsertAdminUser stores the single administrator account.
+func (s *FeedbackStore) UpsertAdminUser(ctx context.Context, user *model.AdminUser) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Single-row semantics: replacing the account must not leave a second row.
+		if err := tx.Where("1 = 1").Delete(&model.AdminUser{}).Error; err != nil {
+			return err
+		}
+		return tx.Create(user).Error
+	})
+}
+
+// GetAppSetting reads a runtime setting; empty string when absent.
+func (s *FeedbackStore) GetAppSetting(ctx context.Context, key string) (string, error) {
+	var setting model.AppSetting
+	err := s.db.WithContext(ctx).Where("key = ?", key).First(&setting).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return setting.Value, nil
+}
+
+// SetAppSetting writes a runtime setting.
+func (s *FeedbackStore) SetAppSetting(ctx context.Context, key, value string, now time.Time) error {
+	setting := model.AppSetting{Key: key, Value: value, UpdatedAt: now.UTC()}
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+	}).Create(&setting).Error
+}
+
 func (s *FeedbackStore) GetSession(ctx context.Context, tokenHash string, now time.Time) (model.AdminSession, error) {
 	var session model.AdminSession
 	err := s.db.WithContext(ctx).Where("token_hash = ? AND expires_at > ?", tokenHash, now.UTC()).First(&session).Error
@@ -744,19 +792,19 @@ func (s *FeedbackStore) ConsumeRateLimit(ctx context.Context, keyHash string, wi
 	allowed := true
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		res := tx.Exec(
-			`INSERT INTO abuse_buckets (key_hash, window_start, count, expires_at) VALUES (?, ?, 1, ?)
-			 ON CONFLICT(key_hash, window_start) DO UPDATE SET count = count + 1, expires_at = excluded.expires_at`,
+			`INSERT INTO abuse_buckets (key_hash, window_start, hits, expires_at) VALUES (?, ?, 1, ?)
+			 ON CONFLICT(key_hash, window_start) DO UPDATE SET hits = abuse_buckets.hits + 1, expires_at = excluded.expires_at`,
 			keyHash, windowStart.UTC(), expiresAt.UTC(),
 		)
 		if res.Error != nil {
 			return res.Error
 		}
-		var count int
-		if err := tx.Raw(`SELECT count FROM abuse_buckets WHERE key_hash = ? AND window_start = ?`,
-			keyHash, windowStart.UTC()).Scan(&count).Error; err != nil {
+		var hits int
+		if err := tx.Raw(`SELECT hits FROM abuse_buckets WHERE key_hash = ? AND window_start = ?`,
+			keyHash, windowStart.UTC()).Scan(&hits).Error; err != nil {
 			return err
 		}
-		if count > limit {
+		if hits > limit {
 			allowed = false
 		}
 		return nil
@@ -1045,11 +1093,11 @@ func (s *FeedbackStore) InsertOutbox(ctx context.Context, item *model.MailOutbox
 }
 
 func (s *FeedbackStore) RateLimitCount(ctx context.Context, keyHash string, windowStart time.Time) (int, error) {
-	var count int
+	var hits int
 	err := s.db.WithContext(ctx).Raw(
-		`SELECT count FROM abuse_buckets WHERE key_hash = ? AND window_start = ?`,
-		keyHash, windowStart.UTC()).Scan(&count).Error
-	return count, err
+		`SELECT hits FROM abuse_buckets WHERE key_hash = ? AND window_start = ?`,
+		keyHash, windowStart.UTC()).Scan(&hits).Error
+	return hits, err
 }
 
 func (s *FeedbackStore) ClearRateLimit(ctx context.Context, keyHash string, windowStart time.Time) error {

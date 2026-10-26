@@ -173,13 +173,33 @@ type MailOutbox struct {
 	UpdatedAt      time.Time  `gorm:"not null"`
 }
 
+// AdminUser is the single administrator account, stored in the database and
+// managed with `biodays admin set-password`. Environment variables only seed
+// it on first boot for backward compatibility.
+type AdminUser struct {
+	Username     string    `gorm:"primaryKey;size:64"`
+	PasswordHash string    `gorm:"not null"`
+	CreatedAt    time.Time `gorm:"not null"`
+	UpdatedAt    time.Time `gorm:"not null"`
+}
+
+// AppSetting holds small runtime-generated secrets (e.g. the abuse HMAC
+// key) so a deployment works without hand-crafted environment values.
+type AppSetting struct {
+	Key       string    `gorm:"primaryKey;size:64"`
+	Value     string    `gorm:"not null"`
+	UpdatedAt time.Time `gorm:"not null"`
+}
+
 // AbuseBucket is a fixed-window counter keyed by HMAC, never by raw IP/email.
 type AbuseBucket struct {
 	ID          uint      `gorm:"primaryKey"`
 	KeyHash     string    `gorm:"not null;size:64;uniqueIndex:idx_abuse_key_window,priority:1"`
 	WindowStart time.Time `gorm:"not null;uniqueIndex:idx_abuse_key_window,priority:2"`
-	Count       int       `gorm:"not null;default:0"`
-	ExpiresAt   time.Time `gorm:"not null;index:idx_abuse_expires"`
+	// Hits is deliberately not named "count": bare count is an aggregate
+	// function name in PostgreSQL and raw SQL would need quoting everywhere.
+	Hits      int       `gorm:"not null;default:0"`
+	ExpiresAt time.Time `gorm:"not null;index:idx_abuse_expires"`
 }
 
 // FeedbackChallenge is a single-use proof-of-work challenge bound to one

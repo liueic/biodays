@@ -55,6 +55,12 @@ export function DesktopTaskbar() {
   function navigate(path: string) {
     setOpen(false);
     openWindow(MAIN_WINDOW);
+    // Cross-group target: a full page load unloads the reading layout's
+    // session recorder before the private pages render.
+    if (path === "/feedback") {
+      window.location.assign(path);
+      return;
+    }
     router.push(path);
   }
 

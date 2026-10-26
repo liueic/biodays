@@ -49,6 +49,12 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
           router.replace("/admin/login");
           return;
         }
+        if (reason instanceof FeedbackApiError && reason.status === 403) {
+          setError(
+            "请求来源校验失败：请确认通过站点正式域名访问，且 BIODAYS_SITE_URL 配置与之一致。",
+          );
+          return;
+        }
         if (reason instanceof FeedbackApiError && reason.status === 503) {
           setError("反馈功能尚未启用。");
           return;

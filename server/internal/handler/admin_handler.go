@@ -75,6 +75,9 @@ func (h *AdminHandler) Login(c *gin.Context) {
 	case errors.Is(err, service.ErrInvalidCredentials):
 		fail(c, http.StatusUnauthorized, CodeUnauthenticated, "invalid username or password")
 		return
+	case errors.Is(err, service.ErrAdminNotInitialized):
+		fail(c, http.StatusServiceUnavailable, CodeAdminNotInitialized, "admin account is not initialized; run 'biodays admin set-password' on the server")
+		return
 	case err != nil:
 		internalError(c, h.logger, err)
 		return
@@ -85,7 +88,7 @@ func (h *AdminHandler) Login(c *gin.Context) {
 	}
 	h.setSessionCookie(c, identity.RawToken, maxAge)
 	c.JSON(http.StatusOK, AdminSessionResponse{Data: AdminSessionDTO{
-		Username: req.Username, CSRFToken: identity.CSRF, ExpiresAt: identity.ExpiresAt,
+		Username: identity.Username, CSRFToken: identity.CSRF, ExpiresAt: identity.ExpiresAt,
 	}})
 }
 
@@ -125,12 +128,8 @@ func (h *AdminHandler) Me(c *gin.Context) {
 		fail(c, http.StatusUnauthorized, CodeUnauthenticated, "admin login required")
 		return
 	}
-	username := "admin"
-	if h.admin != nil {
-		username = h.admin.Username()
-	}
 	c.JSON(http.StatusOK, AdminSessionResponse{Data: AdminSessionDTO{
-		Username: username, CSRFToken: identity.CSRF, ExpiresAt: identity.ExpiresAt,
+		Username: identity.Username, CSRFToken: identity.CSRF, ExpiresAt: identity.ExpiresAt,
 	}})
 }
 
@@ -260,10 +259,7 @@ func (h *AdminHandler) UpdateFeedback(c *gin.Context) {
 		fail(c, http.StatusBadRequest, CodeInvalidParam, "no changes supplied")
 		return
 	}
-	actor := "admin"
-	if h.admin != nil {
-		actor = h.admin.Username()
-	}
+	actor := identityUsername(c)
 	result, err := h.feedback.UpdateFeedback(c.Request.Context(), actor, service.AdminUpdateInput{
 		ID: c.Param("id"), Version: req.Version, Status: req.Status,
 		InternalNote: req.InternalNote, PublicReply: req.PublicReply,
@@ -298,10 +294,7 @@ func (h *AdminHandler) DeleteFeedback(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, CodeFeedbackUnavailable, "feedback is not enabled")
 		return
 	}
-	actor := "admin"
-	if h.admin != nil {
-		actor = h.admin.Username()
-	}
+	actor := identityUsername(c)
 	if err := h.feedback.DeleteFeedback(c.Request.Context(), actor, c.Param("id")); err != nil {
 		h.writeFeedbackError(c, err)
 		return
@@ -331,6 +324,14 @@ func (h *AdminHandler) writeFeedbackError(c *gin.Context, err error) {
 func (h *AdminHandler) setSessionCookie(c *gin.Context, raw string, maxAge int) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(middleware.AdminCookieName, raw, maxAge, "/", "", h.secure, true)
+}
+
+// identityUsername reports the session's account name for audit records.
+func identityUsername(c *gin.Context) string {
+	if identity, ok := middleware.AdminIdentity(c); ok {
+		return identity.Username
+	}
+	return "admin"
 }
 
 func pagination(c *gin.Context) (int, int) {

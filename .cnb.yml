@@ -6,74 +6,115 @@
 #
 # 工具链版本与 .prototools 对齐：Go 1.27.3、Bun 1.4.4。
 # cgo（go-sqlite3）需要 gcc；生产 Dockerfile 使用 Debian 13/glibc 构建，与 Distroless 对齐。
-# container 流水线依赖 services: docker 提供 docker CLI/daemon，缺失会直接 command not found。
+#
+# stories / go / web 三条流水线在 PR、main、tag 三个事件中复用，
+# 通过 YAML 锚点定义一次（见下方 .stories-pipeline / .go-pipeline / .web-pipeline），
+# 各事件只补充 label 差异；container 流水线因推送策略不同单独定义。
+#
+# go 流水线依赖 services: docker：一是集成测试需要拉起临时 PostgreSQL 容器，
+# 二是复用 daemon 缓存（缺失会直接 command not found）。
 #
 # 镜像地址 ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
 #   push main  -> latest / main / sha-<短哈希>
 #   tag v1.2.3 -> 1.2.3 / 1.2 / latest
 #   PR         -> 只构建，不推送
 
+# ─── 复用的流水线定义 ───────────────────────────────────────────────
+
+.stories-pipeline: &stories-pipeline
+  name: stories
+  docker:
+    image: python:3.14-slim
+  stages:
+    - name: manifest
+      script: python3 scripts/stories.py check
+    - name: sync tests
+      script: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+.go-pipeline: &go-pipeline
+  name: go
+  lock:
+    key: ci-go
+    cancel-in-progress: true
+    wait: true
+  docker:
+    image: golang:1.27.3
+    volumes:
+      - /tmp/gomod
+      - /tmp/gocache
+  # 集成测试需要 docker 服务拉起临时 PostgreSQL 容器。
+  services:
+    - docker
+  env:
+    CGO_ENABLED: "1"
+    GOMODCACHE: /tmp/gomod
+    # 与上面的 volume 必须保持一致，否则缓存写了不用
+    GOCACHE: /tmp/gocache
+  stages:
+    - name: vet
+      script: cd server && go vet ./...
+    - name: test
+      script: |
+        cd server
+        go test -race -count=1 ./...
+        # PostgreSQL 集成测试（限流/会话/事务里的 raw SQL 方言兼容性）。
+        # 没有它，SQLite 下全绿的代码也可能在 PG 上直接 500（abuse_buckets 的前车之鉴）。
+        docker run -d --name biodays-pg \
+          -e POSTGRES_USER=biodays -e POSTGRES_PASSWORD=biodays \
+          -e POSTGRES_DB=biodays_test postgres:17-alpine >/dev/null
+        for i in $(seq 1 30); do
+          docker exec biodays-pg pg_isready -U biodays -d biodays_test >/dev/null 2>&1 && break
+          sleep 1
+        done
+        PGHOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' biodays-pg)
+        # dind 网络拓扑因平台而异：优先容器 IP，回退 localhost。
+        for host in "$PGHOST" 127.0.0.1; do
+          [ -n "$host" ] || continue
+          if (echo > /dev/tcp/$host/5432) >/dev/null 2>&1; then PGHOST=$host; break; fi
+        done
+        echo "postgres integration host: $PGHOST"
+        BIODAYS_TEST_PG_DSN="postgres://biodays:biodays@${PGHOST}:5432/biodays_test?sslmode=disable" \
+          go test -race -count=1 ./internal/store/ -run TestPostgresIntegration -v
+        docker rm -f biodays-pg >/dev/null 2>&1 || true
+    - name: govulncheck
+      # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
+      # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
+      # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
+      # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
+      # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
+      script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
+
+.web-pipeline: &web-pipeline
+  name: web
+  lock:
+    key: ci-web
+    cancel-in-progress: true
+    wait: true
+  docker:
+    image: oven/bun:1.4.4
+    volumes:
+      - /root/.bun/install/cache
+  stages:
+    - name: install
+      script: cd web && bun install --frozen-lockfile && bun run prepare:assets
+    - name: typecheck
+      script: cd web && bun run typecheck
+    - name: lint
+      script: cd web && bun run lint
+
+# ─── 事件绑定 ──────────────────────────────────────────────────────
+
 "**":
   pull_request:
-    - name: stories
+    - <<: *stories-pipeline
       label:
         type: CI
-      docker:
-        image: python:3.14-slim
-      stages:
-        - name: manifest
-          script: python3 scripts/stories.py check
-        - name: sync tests
-          script: python3 -m unittest discover -s scripts -p 'test_*.py'
-
-    - name: go
+    - <<: *go-pipeline
       label:
         type: CI
-      lock:
-        key: ci-go
-        cancel-in-progress: true
-        wait: true
-      docker:
-        image: golang:1.27.3
-        volumes:
-          - /tmp/gomod
-          - /tmp/gocache
-      env:
-        CGO_ENABLED: "1"
-        GOMODCACHE: /tmp/gomod
-        # 与上面的 volume 必须保持一致，否则缓存写了不用
-        GOCACHE: /tmp/gocache
-      stages:
-        - name: vet
-          script: cd server && go vet ./...
-        - name: test
-          script: cd server && go test -race -count=1 ./...
-        - name: govulncheck
-          # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
-          # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
-          # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
-          # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
-          # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
-          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
-
-    - name: web
+    - <<: *web-pipeline
       label:
         type: CI
-      lock:
-        key: ci-web
-        cancel-in-progress: true
-        wait: true
-      docker:
-        image: oven/bun:1.4.4
-        volumes:
-          - /root/.bun/install/cache
-      stages:
-        - name: install
-          script: cd web && bun install --frozen-lockfile && bun run prepare:assets
-        - name: typecheck
-          script: cd web && bun run typecheck
-        - name: lint
-          script: cd web && bun run lint
 
     - name: container
       label:
@@ -103,65 +144,15 @@
 
 main:
   push:
-    - name: stories
+    - <<: *stories-pipeline
       label:
         type: CI
-      docker:
-        image: python:3.14-slim
-      stages:
-        - name: manifest
-          script: python3 scripts/stories.py check
-        - name: sync tests
-          script: python3 -m unittest discover -s scripts -p 'test_*.py'
-
-    - name: go
+    - <<: *go-pipeline
       label:
         type: CI
-      lock:
-        key: ci-go
-        cancel-in-progress: true
-        wait: true
-      docker:
-        image: golang:1.27.3
-        volumes:
-          - /tmp/gomod
-          - /tmp/gocache
-      env:
-        CGO_ENABLED: "1"
-        GOMODCACHE: /tmp/gomod
-        # 与上面的 volume 必须保持一致，否则缓存写了不用
-        GOCACHE: /tmp/gocache
-      stages:
-        - name: vet
-          script: cd server && go vet ./...
-        - name: test
-          script: cd server && go test -race -count=1 ./...
-        - name: govulncheck
-          # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
-          # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
-          # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
-          # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
-          # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
-          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
-
-    - name: web
+    - <<: *web-pipeline
       label:
         type: CI
-      lock:
-        key: ci-web
-        cancel-in-progress: true
-        wait: true
-      docker:
-        image: oven/bun:1.4.4
-        volumes:
-          - /root/.bun/install/cache
-      stages:
-        - name: install
-          script: cd web && bun install --frozen-lockfile && bun run prepare:assets
-        - name: typecheck
-          script: cd web && bun run typecheck
-        - name: lint
-          script: cd web && bun run lint
 
     - name: container
       label:
@@ -192,57 +183,15 @@ main:
 
 "v*.*.*":
   tag_push:
-    - name: stories
+    - <<: *stories-pipeline
       label:
         type: RELEASE
-      docker:
-        image: python:3.14-slim
-      stages:
-        - name: manifest
-          script: python3 scripts/stories.py check
-        - name: sync tests
-          script: python3 -m unittest discover -s scripts -p 'test_*.py'
-
-    - name: go
+    - <<: *go-pipeline
       label:
         type: RELEASE
-      docker:
-        image: golang:1.27.3
-        volumes:
-          - /tmp/gomod
-          - /tmp/gocache
-      env:
-        CGO_ENABLED: "1"
-        GOMODCACHE: /tmp/gomod
-        # 与上面的 volume 必须保持一致，否则缓存写了不用
-        GOCACHE: /tmp/gocache
-      stages:
-        - name: vet
-          script: cd server && go vet ./...
-        - name: test
-          script: cd server && go test -race -count=1 ./...
-        - name: govulncheck
-          # 固定版本而不是 @latest：@latest 不带版本号，Go 不会复用 GOMODCACHE，
-          # 每次都重新下载 x/vuln 和它的 x/tools 依赖再冷编译。
-          # 版本要跟 Go 1.27 的语法对齐：govulncheck 用 x/tools 的 SSA 构建器解析源码，
-          # v1.1.4 带的 x/tools v0.29.0 遇到 Go 1.27 的复合字面量直接
-          # panic: unexpected expr: *ast.KeyValueExpr。升级 Go 时这里要一起抬。
-          script: cd server && go run golang.org/x/vuln/cmd/govulncheck@v1.4.0 ./...
-
-    - name: web
+    - <<: *web-pipeline
       label:
         type: RELEASE
-      docker:
-        image: oven/bun:1.4.4
-        volumes:
-          - /root/.bun/install/cache
-      stages:
-        - name: install
-          script: cd web && bun install --frozen-lockfile && bun run prepare:assets
-        - name: typecheck
-          script: cd web && bun run typecheck
-        - name: lint
-          script: cd web && bun run lint
 
     - name: container
       label:
@@ -268,4 +217,3 @@ main:
               --provenance=false --sbom=false \
               --push \
               .
-

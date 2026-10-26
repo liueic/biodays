@@ -28,6 +28,7 @@ export default function PrivateError({
         <ErrorState
           title="页面出错了"
           code={error.digest}
+          variant="critical"
           description="可以重试，或返回灵感信箱。输入内容不会被自动保存。"
           action={{ href: "/feedback", label: "返回灵感信箱" }}
         >

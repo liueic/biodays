@@ -42,7 +42,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       },
       twitter: { card: "summary", title: story.title, description: story.summary },
     };
-  } catch {
+  } catch (error) {
+    // Fail before the response starts streaming: generateMetadata runs ahead
+    // of the page body, so notFound() here still yields a real HTTP 404
+    // instead of a streamed 200 with a 404 UI (this segment has a loading.tsx).
+    if (error instanceof ApiError && error.status === 404) notFound();
     return { title: "故事未找到" };
   }
 }

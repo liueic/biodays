@@ -58,7 +58,7 @@ func newTestEngineWithProxies(t *testing.T, rateLimit int, trustedProxies []stri
 			Title: story.title, Summary: story.summary, LabItem: story.labItem,
 			Content: story.content, GeekQuote: story.quote,
 			SourceType: story.sourceType, SourceCitation: "citation", SourceURL: story.citationURL,
-		}, story.tags))
+		}, story.tags, false, false))
 	}
 
 	cfg := config.Config{
@@ -332,7 +332,7 @@ func TestOtherIDFormatsReachTodayArchiveAndRandom(t *testing.T) {
 		require.NoError(t, st.Upsert(context.Background(), &model.Story{
 			ID: entry.id, Month: 10, Day: entry.day, Year: 2000,
 			Title: entry.id, Content: "content", GeekQuote: "quote",
-		}, nil))
+		}, nil, false, false))
 	}
 	engine, err := router.NewWithClock(config.Config{CORSOrigins: []string{"*"}, RateLimit: 1000}, st,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),

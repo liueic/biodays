@@ -219,16 +219,22 @@ func validateFeedbackConfig(cfg Config) error {
 		if strings.TrimSpace(cfg.FeedbackDBPath) == "" {
 			return fmt.Errorf("BIODAYS_FEEDBACK_DB_PATH is required when feedback is enabled")
 		}
-		if strings.TrimSpace(cfg.AdminUsername) == "" {
-			return fmt.Errorf("BIODAYS_ADMIN_USERNAME is required when feedback is enabled")
+		// The admin account lives in the database and is created with
+		// `biodays admin set-password`. The environment variables below remain
+		// as an optional first-boot import for existing deployments.
+		usernameSet := strings.TrimSpace(cfg.AdminUsername) != ""
+		hashSet := strings.TrimSpace(cfg.AdminPasswordHash) != ""
+		if usernameSet != hashSet {
+			return fmt.Errorf("BIODAYS_ADMIN_USERNAME and BIODAYS_ADMIN_PASSWORD_HASH must be set together")
 		}
-		if strings.TrimSpace(cfg.AdminPasswordHash) == "" {
-			return fmt.Errorf("BIODAYS_ADMIN_PASSWORD_HASH is required when feedback is enabled")
+		if hashSet {
+			if _, err := bcrypt.Cost([]byte(cfg.AdminPasswordHash)); err != nil {
+				return fmt.Errorf("BIODAYS_ADMIN_PASSWORD_HASH is not a valid bcrypt hash: %w", err)
+			}
 		}
-		if _, err := bcrypt.Cost([]byte(cfg.AdminPasswordHash)); err != nil {
-			return fmt.Errorf("BIODAYS_ADMIN_PASSWORD_HASH is not a valid bcrypt hash: %w", err)
-		}
-		if len(cfg.AbuseKeySecret) < 32 {
+		// BIODAYS_ABUSE_KEY_SECRET is optional: when empty, a random key is
+		// generated once and persisted in the database.
+		if cfg.AbuseKeySecret != "" && len(cfg.AbuseKeySecret) < 32 {
 			return fmt.Errorf("BIODAYS_ABUSE_KEY_SECRET must be at least 32 bytes")
 		}
 		if cfg.AdminSessionTTL <= 0 {

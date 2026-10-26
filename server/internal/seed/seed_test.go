@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"biodays/server/internal/model"
 	"biodays/server/internal/seed"
 	"biodays/server/internal/store"
 
@@ -81,4 +83,104 @@ func TestRunRequiresData(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	_, err = seed.Run(context.Background(), st, dir, logger)
 	require.ErrorContains(t, err, "no stories_*.json")
+}
+
+// incrementStore opens an isolated in-memory store for incremental tests.
+func incrementStore(t *testing.T) *store.Store {
+	t.Helper()
+	name := strings.ReplaceAll(t.Name(), "/", "_")
+	st, err := store.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", name))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, st.Close()) })
+	return st
+}
+
+func TestRunIncrementalImportsOnlyWhenDatasetChanges(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "stories_q1.json", "["+storyJSON("Q1-01", 1, "one")+"]")
+	st := incrementStore(t)
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	report, err := seed.RunIncremental(ctx, st, dir, logger)
+	require.NoError(t, err)
+	require.Equal(t, 1, report.Imported)
+	require.False(t, report.Unchanged)
+
+	// Same fingerprint: nothing runs.
+	report, err = seed.RunIncremental(ctx, st, dir, logger)
+	require.NoError(t, err)
+	require.True(t, report.Unchanged)
+	require.Equal(t, 0, report.Imported)
+
+	// A changed corpus imports the update.
+	writeFile(t, dir, "stories_q1.json", "["+storyJSON("Q1-01", 1, "one v2")+"]")
+	report, err = seed.RunIncremental(ctx, st, dir, logger)
+	require.NoError(t, err)
+	require.Equal(t, 1, report.Imported)
+	story, err := st.GetByID(ctx, "Q1-01")
+	require.NoError(t, err)
+	require.Equal(t, "one v2", story.Title)
+}
+
+func TestRunIncrementalPreservesAdminEditsAndTombstones(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "stories_q1.json", "["+
+		storyJSON("Q1-01", 1, "original")+","+
+		storyJSON("Q1-02", 1, "keep me")+","+
+		storyJSON("Q1-03", 1, "to delete")+"]")
+	st := incrementStore(t)
+	ctx := context.Background()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	_, err := seed.RunIncremental(ctx, st, dir, logger)
+	require.NoError(t, err)
+
+	// Simulate admin edits: modify Q1-01 through the admin write path and
+	// delete Q1-03 (a dataset story, which must leave a tombstone).
+	edited := modelStory("Q1-01", "admin title")
+	require.NoError(t, st.Upsert(ctx, edited, []string{"仪器极客"}, true, true))
+	_, err = st.DeleteStory(ctx, "Q1-03")
+	require.NoError(t, err)
+	require.NoError(t, st.AddTombstone(ctx, "Q1-03", time.Now()))
+
+	// Ship a new corpus version: Q1-01 changed upstream, Q1-03 is still there.
+	writeFile(t, dir, "stories_q1.json", "["+
+		storyJSON("Q1-01", 1, "upstream title")+","+
+		storyJSON("Q1-02", 1, "keep me")+","+
+		storyJSON("Q1-03", 1, "to delete")+","+
+		storyJSON("Q1-04", 1, "brand new")+"]")
+	report, err := seed.RunIncremental(ctx, st, dir, logger)
+	require.NoError(t, err)
+	require.Equal(t, 2, report.Preserved, "edited + tombstoned stories are counted")
+	require.Equal(t, 2, report.Imported, "unchanged story re-upserted and new story added")
+
+	story, err := st.GetByID(ctx, "Q1-01")
+	require.NoError(t, err)
+	require.Equal(t, "admin title", story.Title, "admin edit survives the import")
+	require.True(t, story.AdminEdited)
+
+	_, err = st.GetByID(ctx, "Q1-03")
+	require.ErrorIs(t, err, store.ErrNotFound, "deleted story is not resurrected")
+
+	_, err = st.GetByID(ctx, "Q1-04")
+	require.NoError(t, err)
+
+	// The manual Run resets to the canon: edits reverted, deleted story back.
+	report, err = seed.Run(ctx, st, dir, logger)
+	require.NoError(t, err)
+	require.Equal(t, 4, report.Imported)
+	story, err = st.GetByID(ctx, "Q1-01")
+	require.NoError(t, err)
+	require.Equal(t, "upstream title", story.Title)
+	require.False(t, story.AdminEdited)
+	_, err = st.GetByID(ctx, "Q1-03")
+	require.NoError(t, err, "manual seed clears tombstones")
+}
+
+func modelStory(id, title string) *model.Story {
+	return &model.Story{
+		ID: id, Month: 1, Day: 5, Year: 1961,
+		Title: title, Content: "content", GeekQuote: "quote",
+	}
 }

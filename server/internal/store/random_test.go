@@ -17,7 +17,7 @@ func randomFixture(t *testing.T) *Store {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 	for _, id := range []string{"A", "B", "C"} {
-		require.NoError(t, st.Upsert(context.Background(), &model.Story{ID: id, Title: id, Content: "content"}, []string{"tag"}))
+		require.NoError(t, st.Upsert(context.Background(), &model.Story{ID: id, Title: id, Content: "content"}, []string{"tag"}, false, false))
 	}
 	return st
 }

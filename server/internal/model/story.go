@@ -3,21 +3,27 @@ package model
 import "time"
 
 type Story struct {
-	ID             string    `gorm:"primaryKey;size:16"`
-	Month          int       `gorm:"not null;index:idx_stories_month_day,priority:1"`
-	Day            int       `gorm:"not null;index:idx_stories_month_day,priority:2"`
-	Year           int       `gorm:"not null"`
-	Title          string    `gorm:"not null"`
-	LabItem        string    `gorm:"column:lab_item;not null;default:''"`
-	Summary        string    `gorm:"not null;default:''"`
-	Content        string    `gorm:"not null"`
-	GeekQuote      string    `gorm:"column:geek_quote;not null;default:''"`
-	SourceType     string    `gorm:"column:source_type;not null;default:''"`
-	SourceCitation string    `gorm:"column:source_citation;not null;default:''"`
-	SourceURL      string    `gorm:"column:source_url;not null;default:''"`
-	Tags           []Tag     `gorm:"many2many:story_tags;constraint:OnDelete:CASCADE"`
-	CreatedAt      time.Time `gorm:"not null"`
-	UpdatedAt      time.Time `gorm:"not null"`
+	ID             string `gorm:"primaryKey;size:16"`
+	Month          int    `gorm:"not null;index:idx_stories_month_day,priority:1"`
+	Day            int    `gorm:"not null;index:idx_stories_month_day,priority:2"`
+	Year           int    `gorm:"not null"`
+	Title          string `gorm:"not null"`
+	LabItem        string `gorm:"column:lab_item;not null;default:''"`
+	Summary        string `gorm:"not null;default:''"`
+	Content        string `gorm:"not null"`
+	GeekQuote      string `gorm:"column:geek_quote;not null;default:''"`
+	SourceType     string `gorm:"column:source_type;not null;default:''"`
+	SourceCitation string `gorm:"column:source_citation;not null;default:''"`
+	SourceURL      string `gorm:"column:source_url;not null;default:''"`
+	// FromDataset marks stories that came from the bundled JSON corpus.
+	FromDataset bool `gorm:"not null;default:false"`
+	// AdminEdited marks stories modified through the admin API. Incremental
+	// dataset imports skip them, so redeploying a new corpus never reverts
+	// live edits.
+	AdminEdited bool      `gorm:"not null;default:false"`
+	Tags        []Tag     `gorm:"many2many:story_tags;constraint:OnDelete:CASCADE"`
+	CreatedAt   time.Time `gorm:"not null"`
+	UpdatedAt   time.Time `gorm:"not null"`
 }
 
 type Tag struct {
@@ -54,6 +60,13 @@ type TagCount struct {
 type Dataset struct {
 	ID      uint   `gorm:"primaryKey"`
 	Version string `gorm:"not null"`
+}
+
+// DatasetTombstone remembers stories deleted through the admin API so a later
+// incremental dataset import does not resurrect them.
+type DatasetTombstone struct {
+	StoryID   string    `gorm:"primaryKey;size:16"`
+	DeletedAt time.Time `gorm:"not null"`
 }
 
 type StorySummaryDTO struct {

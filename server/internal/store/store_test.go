@@ -26,7 +26,7 @@ func newStore(t *testing.T) *store.Store {
 
 func upsert(t *testing.T, st *store.Store, story model.Story, tags ...string) {
 	t.Helper()
-	require.NoError(t, st.Upsert(context.Background(), &story, tags))
+	require.NoError(t, st.Upsert(context.Background(), &story, tags, false, false))
 }
 
 func TestPing(t *testing.T) {
@@ -173,7 +173,7 @@ func TestUpsertIsIdempotent(t *testing.T) {
 	story := model.Story{
 		ID: "Q1-01", Month: 1, Day: 5, Year: 1961, Title: "v1", Content: "c", GeekQuote: "q",
 	}
-	require.NoError(t, st.Upsert(ctx, &story, []string{"A", "B"}))
+	require.NoError(t, st.Upsert(ctx, &story, []string{"A", "B"}, false, false))
 
 	first, err := st.GetByID(ctx, "Q1-01")
 	require.NoError(t, err)
@@ -181,8 +181,8 @@ func TestUpsertIsIdempotent(t *testing.T) {
 	story2 := model.Story{
 		ID: "Q1-01", Month: 1, Day: 5, Year: 1961, Title: "v2", Content: "c2", GeekQuote: "q2",
 	}
-	require.NoError(t, st.Upsert(ctx, &story2, []string{"B", "C"}))
-	require.NoError(t, st.Upsert(ctx, &story2, []string{"B", "C"}))
+	require.NoError(t, st.Upsert(ctx, &story2, []string{"B", "C"}, false, false))
+	require.NoError(t, st.Upsert(ctx, &story2, []string{"B", "C"}, false, false))
 
 	total, _, err := st.Stats(ctx)
 	require.NoError(t, err)

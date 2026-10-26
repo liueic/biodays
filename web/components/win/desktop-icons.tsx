@@ -83,7 +83,8 @@ export function DesktopIcons({ archiveOpen, onReopenArchive, className }: Deskto
       id: "feedback",
       label: "灵感信箱",
       icon: <Mail variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: () => router.push("/feedback"),
+      // Cross-group target: full page load so the recorder unloads.
+      onOpen: () => window.location.assign("/feedback"),
       hint: "匿名提交反馈、资源或纠错",
     },
     {

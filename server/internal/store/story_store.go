@@ -183,7 +183,12 @@ func (s *Store) DatasetVersion(ctx context.Context) (string, error) {
 	return dataset.Version, err
 }
 
-func (s *Store) Upsert(ctx context.Context, story *model.Story, tagNames []string) error {
+// Upsert writes the story and its tags. The two flags record provenance:
+// fromDataset marks the bundled JSON corpus, adminEdited marks admin-API
+// writes; incremental imports skip admin-edited stories.
+func (s *Store) Upsert(ctx context.Context, story *model.Story, tagNames []string, fromDataset, adminEdited bool) error {
+	story.FromDataset = fromDataset
+	story.AdminEdited = adminEdited
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now().UTC()
 		story.Tags = nil
@@ -197,6 +202,7 @@ func (s *Store) Upsert(ctx context.Context, story *model.Story, tagNames []strin
 			DoUpdates: clause.AssignmentColumns([]string{
 				"month", "day", "year", "title", "lab_item", "summary", "content",
 				"geek_quote", "source_type", "source_citation", "source_url", "updated_at",
+				"from_dataset", "admin_edited",
 			}),
 		}).Omit("Tags").Create(story).Error
 		if err != nil {
@@ -224,6 +230,62 @@ func (s *Store) CleanupOrphanTags(ctx context.Context) error {
 	return s.db.WithContext(ctx).Exec(
 		"DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM story_tags)",
 	).Error
+}
+
+// StoryFlag is the import provenance of one stored story.
+type StoryFlag struct {
+	FromDataset bool
+	AdminEdited bool
+}
+
+// StoryFlags loads the provenance flags of every story in one query; the
+// incremental importer uses them to decide which rows it may overwrite.
+func (s *Store) StoryFlags(ctx context.Context) (map[string]StoryFlag, error) {
+	var rows []struct {
+		ID          string
+		FromDataset bool
+		AdminEdited bool
+	}
+	err := s.db.WithContext(ctx).Model(&model.Story{}).
+		Select("id, from_dataset, admin_edited").Scan(&rows).Error
+	flags := make(map[string]StoryFlag, len(rows))
+	for _, row := range rows {
+		flags[row.ID] = StoryFlag{FromDataset: row.FromDataset, AdminEdited: row.AdminEdited}
+	}
+	return flags, err
+}
+
+// Tombstones lists dataset story ids an administrator deleted; the importer
+// must not resurrect them.
+func (s *Store) Tombstones(ctx context.Context) (map[string]bool, error) {
+	var rows []model.DatasetTombstone
+	if err := s.db.WithContext(ctx).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	ids := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		ids[row.StoryID] = true
+	}
+	return ids, nil
+}
+
+// AddTombstone records that an administrator deleted a bundled story.
+func (s *Store) AddTombstone(ctx context.Context, id string, at time.Time) error {
+	return s.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).
+		Create(&model.DatasetTombstone{StoryID: id, DeletedAt: at.UTC()}).Error
+}
+
+// RemoveTombstone clears a tombstone, e.g. when an administrator explicitly
+// re-publishes the story through the admin API.
+func (s *Store) RemoveTombstone(ctx context.Context, id string) error {
+	return s.db.WithContext(ctx).Where("story_id = ?", id).
+		Delete(&model.DatasetTombstone{}).Error
+}
+
+// ClearTombstones drops every tombstone; the manual `biodays seed` command
+// uses it to reset the database to the dataset canon.
+func (s *Store) ClearTombstones(ctx context.Context) error {
+	return s.db.WithContext(ctx).Where("1 = 1").Delete(&model.DatasetTombstone{}).Error
 }
 
 // DeleteStory removes a story and its tag associations. It reports whether the

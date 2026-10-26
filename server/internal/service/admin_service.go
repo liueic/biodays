@@ -18,9 +18,10 @@ import (
 const maxPasswordBytes = 72
 
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUnauthenticated    = errors.New("unauthenticated")
-	ErrLoginRateLimited   = errors.New("too many login attempts")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrUnauthenticated     = errors.New("unauthenticated")
+	ErrLoginRateLimited    = errors.New("too many login attempts")
+	ErrAdminNotInitialized = errors.New("admin account is not initialized")
 )
 
 const (
@@ -29,6 +30,10 @@ const (
 	bcryptCost    = 12
 )
 
+// AdminSettings carries bootstrap values. Username and PasswordHash are only
+// consulted while the database has no admin account (first boot import from
+// the legacy environment variables); afterwards the database row is the
+// single source of truth and `biodays admin set-password` manages it.
 type AdminSettings struct {
 	Username     string
 	PasswordHash string
@@ -56,6 +61,8 @@ type AdminIdentity struct {
 	TokenHash string
 	CSRF      string
 	ExpiresAt time.Time
+	// Username identifies the account this session belongs to.
+	Username string
 	// RawToken is populated only by Login so the handler can set the cookie.
 	RawToken string
 }
@@ -74,18 +81,45 @@ func HashPassword(password string) (string, error) {
 	return string(hash), nil
 }
 
-func (s *AdminService) Username() string { return s.settings.Username }
-
-func (s *AdminService) credentialVersion() string {
-	return security.CredentialVersion(s.settings.Username, s.settings.PasswordHash)
+// adminCredentials resolves the current account: the database row wins, the
+// bootstrap (environment) values only apply before one exists.
+func (s *AdminService) adminCredentials(ctx context.Context) (username, passwordHash string, err error) {
+	if s.store != nil {
+		user, lookupErr := s.store.GetAdminUser(ctx)
+		if lookupErr != nil {
+			return "", "", lookupErr
+		}
+		if user != nil {
+			return user.Username, user.PasswordHash, nil
+		}
+	}
+	if strings.TrimSpace(s.settings.Username) != "" && s.settings.PasswordHash != "" {
+		return strings.TrimSpace(s.settings.Username), s.settings.PasswordHash, nil
+	}
+	return "", "", ErrAdminNotInitialized
 }
 
-// Startup invalidates sessions created under different configured credentials.
+func (s *AdminService) credentialVersion(ctx context.Context) (string, error) {
+	username, passwordHash, err := s.adminCredentials(ctx)
+	if err != nil {
+		return "", err
+	}
+	return security.CredentialVersion(username, passwordHash), nil
+}
+
+// Startup invalidates sessions created under different credentials.
 func (s *AdminService) Startup(ctx context.Context) error {
-	if err := s.store.DeleteOtherCredentialSessions(ctx, s.credentialVersion()); err != nil {
+	version, err := s.credentialVersion(ctx)
+	if err != nil {
+		if errors.Is(err, ErrAdminNotInitialized) {
+			return nil // nothing to compare against; login stays disabled
+		}
 		return err
 	}
-	_, err := s.store.CleanupExpiredSessions(ctx, s.now().UTC())
+	if err := s.store.DeleteOtherCredentialSessions(ctx, version); err != nil {
+		return err
+	}
+	_, err = s.store.CleanupExpiredSessions(ctx, s.now().UTC())
 	return err
 }
 
@@ -105,7 +139,11 @@ func (s *AdminService) Login(ctx context.Context, username, password, clientIP s
 		}
 	}
 
-	if !s.verify(username, password) {
+	storedUsername, storedHash, err := s.adminCredentials(ctx)
+	if err != nil {
+		return AdminIdentity{}, err
+	}
+	if !s.verify(username, password, storedUsername, storedHash) {
 		for _, key := range []string{ipKey, accountKey} {
 			if _, err := s.store.ConsumeRateLimit(ctx, key, windowStart, windowStart.Add(loginWindow), loginMaxFails); err != nil {
 				return AdminIdentity{}, err
@@ -129,7 +167,7 @@ func (s *AdminService) Login(ctx context.Context, username, password, clientIP s
 	expires := now.Add(s.settings.SessionTTL)
 	session := &model.AdminSession{
 		TokenHash:         tokenHash,
-		CredentialVersion: s.credentialVersion(),
+		CredentialVersion: security.CredentialVersion(storedUsername, storedHash),
 		CSRFHash:          security.HashToken(csrf),
 		CreatedAt:         now,
 		ExpiresAt:         expires,
@@ -138,16 +176,19 @@ func (s *AdminService) Login(ctx context.Context, username, password, clientIP s
 		return AdminIdentity{}, err
 	}
 	_ = s.store.DeleteOtherCredentialSessions(ctx, session.CredentialVersion)
-	return AdminIdentity{TokenHash: tokenHash, CSRF: csrf, ExpiresAt: expires, RawToken: raw}, nil
+	return AdminIdentity{
+		TokenHash: tokenHash, CSRF: csrf, ExpiresAt: expires,
+		Username: storedUsername, RawToken: raw,
+	}, nil
 }
 
-func (s *AdminService) verify(username, password string) bool {
-	usernameOK := security.ConstantTimeEqual(strings.TrimSpace(username), s.settings.Username)
+func (s *AdminService) verify(username, password, storedUsername, storedHash string) bool {
+	usernameOK := security.ConstantTimeEqual(strings.TrimSpace(username), storedUsername)
 	// bcrypt runs regardless of the username so response time does not reveal
 	// whether the account name was correct.
 	passwordOK := false
 	if len(password) <= maxPasswordBytes {
-		passwordOK = bcrypt.CompareHashAndPassword([]byte(s.settings.PasswordHash), []byte(password)) == nil
+		passwordOK = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(password)) == nil
 	}
 	return usernameOK && passwordOK
 }
@@ -164,7 +205,12 @@ func (s *AdminService) Authenticate(ctx context.Context, rawToken string) (Admin
 		}
 		return AdminIdentity{}, err
 	}
-	if session.CredentialVersion != s.credentialVersion() {
+	username, storedHash, credErr := s.adminCredentials(ctx)
+	if credErr != nil {
+		_ = s.store.DeleteSession(ctx, tokenHash)
+		return AdminIdentity{}, ErrUnauthenticated
+	}
+	if session.CredentialVersion != security.CredentialVersion(username, storedHash) {
 		_ = s.store.DeleteSession(ctx, tokenHash)
 		return AdminIdentity{}, ErrUnauthenticated
 	}
@@ -173,7 +219,7 @@ func (s *AdminService) Authenticate(ctx context.Context, rawToken string) (Admin
 		_ = s.store.DeleteSession(ctx, tokenHash)
 		return AdminIdentity{}, ErrUnauthenticated
 	}
-	return AdminIdentity{TokenHash: tokenHash, CSRF: csrf, ExpiresAt: session.ExpiresAt}, nil
+	return AdminIdentity{TokenHash: tokenHash, CSRF: csrf, ExpiresAt: session.ExpiresAt, Username: username}, nil
 }
 
 func (s *AdminService) Logout(ctx context.Context, rawToken string) error {

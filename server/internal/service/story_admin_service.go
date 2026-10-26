@@ -75,15 +75,24 @@ func (s *StoryAdminService) upsertOne(ctx context.Context, entry seed.StoryInput
 	if problems := seed.ValidateStory(entry); len(problems) > 0 {
 		return StoryUpsertItem{ID: entry.ID, Problems: problems}, false, nil
 	}
+	id := strings.TrimSpace(entry.ID)
 	created := false
-	if _, err := s.stories.GetByID(ctx, strings.TrimSpace(entry.ID)); err != nil {
+	fromDataset := false
+	if existing, err := s.stories.GetByID(ctx, id); err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			return StoryUpsertItem{}, false, err
 		}
 		created = true
+	} else {
+		fromDataset = existing.FromDataset
 	}
 	story, tags := seed.StoryToModel(entry)
-	if err := s.stories.Upsert(ctx, story, tags); err != nil {
+	if err := s.stories.Upsert(ctx, story, tags, fromDataset, true); err != nil {
+		return StoryUpsertItem{}, false, err
+	}
+	// An explicit re-publish clears a deletion tombstone: the administrator
+	// wants this story back, even if a later dataset import removed it.
+	if err := s.stories.RemoveTombstone(ctx, id); err != nil {
 		return StoryUpsertItem{}, false, err
 	}
 	if err := s.stories.CleanupOrphanTags(ctx); err != nil {
@@ -179,7 +188,7 @@ func (s *StoryAdminService) Update(ctx context.Context, id string, patch StoryPa
 		return model.StoryDTO{}, problems, nil
 	}
 	story, tags := seed.StoryToModel(merged)
-	if err := s.stories.Upsert(ctx, story, tags); err != nil {
+	if err := s.stories.Upsert(ctx, story, tags, existing.FromDataset, true); err != nil {
 		return model.StoryDTO{}, nil, err
 	}
 	if err := s.stories.CleanupOrphanTags(ctx); err != nil {
@@ -193,13 +202,24 @@ func (s *StoryAdminService) Update(ctx context.Context, id string, patch StoryPa
 }
 
 // Delete removes a story and cleans up tags left orphaned by the removal.
+// Bundled (dataset) stories leave a tombstone so incremental corpus imports
+// do not resurrect them.
 func (s *StoryAdminService) Delete(ctx context.Context, id string) error {
+	existing, err := s.stories.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
 	deleted, err := s.stories.DeleteStory(ctx, id)
 	if err != nil {
 		return err
 	}
 	if !deleted {
 		return store.ErrNotFound
+	}
+	if existing.FromDataset {
+		if err := s.stories.AddTombstone(ctx, id, s.now()); err != nil {
+			return err
+		}
 	}
 	return s.stories.CleanupOrphanTags(ctx)
 }

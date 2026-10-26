@@ -38,7 +38,7 @@ biodays/
 ├── data/                  Git 管理的季度与主题故事 JSON（408 篇）
 ├── deploy/launcher.js     容器内进程 supervisor：启动 Go API，就绪后启动 Next
 ├── server/                Go module（module biodays/server）
-│   ├── cmd/biodays/       单二进制入口：serve / seed / migrate / hash-password / cleanup / backup / restore
+│   ├── cmd/biodays/       单二进制入口：serve / seed / migrate / hash-password / admin set-password / cleanup / backup / restore
 │   ├── internal/          config · model · store · service · mailer · handler · middleware · router · seed
 │   └── docs/              swag 生成的 Swagger 文档（挂载于 /swagger/index.html）
 └── web/                   Next.js 16 + React 19 + Tailwind v4（Bun 管理）
@@ -109,7 +109,7 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_PORT` | `8080` | 服务监听端口 |
 | `BIODAYS_DB_DSN` | 空 | 设为 `postgres://...` 时故事与反馈全部存入该 PostgreSQL 库；为空使用下方 SQLite 路径 |
 | `BIODAYS_DB_PATH` | `./biodays.db` | SQLite 数据文件路径（DSN 为空时生效） |
-| `BIODAYS_DATA_DIR` | 必填（执行 seed 时） | 原始 `stories_*.json` 所在目录；PostgreSQL 模式下仅在空库首启时导入 |
+| `BIODAYS_DATA_DIR` | 必填（执行 seed 时） | 原始 `stories_*.json` 所在目录；serve 启动时按数据集指纹**增量导入**（详见下方「数据集更新策略」） |
 | `BIODAYS_ADMIN_API_TOKEN` | 空 | 管理端故事发布的静态 Bearer Token（≥32 字节）；设置后可脚本/CI 发布，仅作用于故事接口 |
 | `BIODAYS_CORS_ORIGINS` | `http://localhost:3000` | 跨域放行源，多个以逗号分隔，支持 `*`；`BIODAYS_SITE_URL` 的 origin 会自动加入 |
 | `BIODAYS_TRUSTED_PROXIES` | 空 | 可信反向代理 IP/CIDR，多个以逗号分隔；仅对这些来源信任 `X-Forwarded-For` |
@@ -118,10 +118,10 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_SITE_URL` | `http://localhost:3000` | 确认/退订链接使用的可信站点 origin，也用于校验管理写请求的 Origin |
 | `BIODAYS_FEEDBACK_ENABLED` | `false` | 是否启用匿名反馈与管理员后台；关闭时故事服务不受影响 |
 | `BIODAYS_FEEDBACK_DB_PATH` | `./feedback.db` | 独立反馈库；容器内为 `/var/lib/biodays/feedback.db` |
-| `BIODAYS_ADMIN_USERNAME` | 启用时必填 | 单管理员账号 |
-| `BIODAYS_ADMIN_PASSWORD_HASH` | 启用时必填 | 由 `biodays hash-password` 生成 |
+| `BIODAYS_ADMIN_USERNAME` | 空（可选） | 旧部署首次启动导入用；账号实际存在数据库，由 `biodays admin set-password` 管理 |
+| `BIODAYS_ADMIN_PASSWORD_HASH` | 空（可选） | 同上；提供时必须是合法 bcrypt 哈希，且与 `BIODAYS_ADMIN_USERNAME` 同时提供 |
 | `BIODAYS_ADMIN_SESSION_TTL` | `8h` | 管理员会话绝对有效期 |
-| `BIODAYS_ABUSE_KEY_SECRET` | 启用时必填 | ≥32 字节随机密钥，用于 IP/邮箱 HMAC 限流键与令牌指纹 |
+| `BIODAYS_ABUSE_KEY_SECRET` | 空（自动生成） | IP/邮箱 HMAC 限流键与令牌指纹密钥；留空时首次启动生成随机密钥并持久化到数据库；显式提供则需 ≥32 字节 |
 | `BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED` | `true` | 是否允许用户订阅；还需 SMTP 启用才展示订阅选项 |
 | `BIODAYS_SMTP_ENABLED` | `false` | 启用持久化邮件 worker；关闭时反馈仍保存、任务保留 |
 | `BIODAYS_SMTP_HOST` / `BIODAYS_SMTP_PORT` | 空 / `587` | 邮件服务商主机与端口 |
@@ -169,43 +169,32 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 
 访客无需注册即可提交反馈。昵称与邮箱只是这一条投稿的联系方式，不是账号；管理员使用独立后台登录。启用步骤：
 
-1. 生成管理员密码哈希（密码不会出现在命令参数、进程列表或镜像中）：
-
-   ```bash
-   cd server
-   go run ./cmd/biodays hash-password
-   # 交互输入两次；也支持管道：
-   printf 'your-long-password\n' | go run ./cmd/biodays hash-password
-   ```
-
-   bcrypt 输入上限为 72 字节，超过会明确报错而不是静默截断。
-
-2. 生成限流/指纹密钥（至少 32 字节）：
-
-   ```bash
-   openssl rand -base64 48
-   ```
-
-3. 在 `.env` / 运行环境中设置（完整列表见 `.env.example` 与上方环境变量表）：
+1. 在 `.env` / 运行环境中设置（完整列表见 `.env.example` 与上方环境变量表）：
 
    ```bash
    BIODAYS_FEEDBACK_ENABLED=true
-   BIODAYS_ADMIN_USERNAME=admin
-   BIODAYS_ADMIN_PASSWORD_HASH='$2a$12$...'
-   BIODAYS_ABUSE_KEY_SECRET='...'
    # 本地 Next dev 用 3000；Docker Compose 用映射端口（默认 8080）或公网 origin
    BIODAYS_SITE_URL=http://localhost:3000
-   # 仅本地直接运行 Go 时使用；Docker Compose 已固定为 /var/lib/biodays/feedback.db
-   # BIODAYS_FEEDBACK_DB_PATH=./feedback.db
    ```
 
-   > **两个容易踩的坑**
-   > - bcrypt 哈希和含 `$` 的 SMTP 密码必须用**单引号**包住（或把每个 `$` 写成 `$$`）。否则 Docker Compose 会做变量插值，哈希/密码会被截断。
-   > - `BIODAYS_SITE_URL` 必须是浏览器实际访问的 origin（`scheme://host[:port]`，不要带路径或结尾 `/`）。确认/退订链接、canonical、sitemap 和管理端 Origin 校验都依赖它。
-   >
-   > Compose 通过 `BIODAYS_CORS_ORIGINS` 控制公开 API 跨域，默认 `*` 与镜像既有行为一致；站点自身 origin 会自动并入允许列表。
+   管理员账号存在数据库里（不再需要环境变量里的 bcrypt 哈希），限流密钥留空时会自动生成并持久化。
 
-4. 启动后端与前端，访问：
+2. 创建/修改管理员账号（交互式输入两次密码，或用 `--stdin` 管道）：
+
+   ```bash
+   cd server
+   go run ./cmd/biodays admin set-password
+   # 容器部署：
+   docker compose exec app /usr/local/bin/biodays admin set-password
+   # 脚本化：
+   printf 'your-long-password\n' | go run ./cmd/biodays admin set-password --stdin
+   ```
+
+   密码长度 8–72 字节；修改后旧会话立即失效。账号未初始化时登录接口返回 `ADMIN_NOT_INITIALIZED`（503），前端会提示初始化命令。老部署升级时，`BIODAYS_ADMIN_USERNAME` + `BIODAYS_ADMIN_PASSWORD_HASH` 会在首次启动导入数据库，之后即可删除这两个变量。
+
+   > **容易踩的坑**：`BIODAYS_SITE_URL` 必须是浏览器实际访问的 origin（`scheme://host[:port]`，不要带路径或结尾 `/`）。确认/退订链接、canonical、sitemap 和管理端 Origin 校验都依赖它。`BIODAYS_CORS_ORIGINS` 的 `*` 只作用于公开 API 跨域，管理端写请求始终只认 `BIODAYS_SITE_URL`（及 CORS 列表中显式列出的 origin）。
+
+3. 启动后端与前端，访问：
 
    - `/feedback`：匿名投稿、订阅状态回执与重发确认邮件；
    - `/feedback/confirm#token=…`：邮件中的确认链接（打开页面不会修改状态，点击按钮才 POST）；
@@ -341,7 +330,7 @@ BIODAYS_DATA_DIR=/path/to/data BIODAYS_DB_PATH=./biodays.db ./biodays serve
 
 #### 单容器镜像（前端 + Go API）
 
-根目录 `Dockerfile` 使用 `gcr.io/distroless/nodejs24-debian13:nonroot`。Next.js 监听 3000，Go API 在容器内部监听 8080。`data/stories_*.json` 由 Git 管理，在构建阶段通过 `biodays seed --strict` 导入 SQLite；空数据、无效 JSON、重复 ID 或被跳过的记录均令构建失败。运行镜像同时携带生成的 SQLite（供无 PostgreSQL 的部署直接使用）和 JSON 语料目录 `/stories-data`（供 PostgreSQL 首次启动导入）。
+根目录 `Dockerfile` 使用 `gcr.io/distroless/nodejs24-debian13:nonroot`。Next.js 监听 3000，Go API 在容器内部监听 8080。`data/stories_*.json` 由 Git 管理，在构建阶段通过 `biodays seed --strict` 导入 SQLite；空数据、无效 JSON、重复 ID 或被跳过的记录均令构建失败。运行镜像同时携带生成的 SQLite（供无 PostgreSQL 的部署直接使用）和 JSON 语料目录 `/stories-data`（供启动时增量导入：新语料随镜像发布，管理员编辑与删除不会被覆盖）。
 
 存储支持双模式：设置 `BIODAYS_DB_DSN`（`postgres://...`）时故事与反馈全部存入同一个 PostgreSQL 数据库，`docker-compose.yml` 默认如此（附带 `postgres:17-alpine` 的 `db` 服务）；不设置 DSN 则保持单文件 SQLite。PostgreSQL 模式下 `biodays backup/restore` 文件快照不可用，改用 `pg_dump`。
 
@@ -406,7 +395,16 @@ python3 scripts/stories.py list --api https://your-domain.example --token "$BIOD
 
 `publish` 按 id 幂等 upsert（存在即更新，不存在即创建），单次上限 200 篇、自动分批，服务端校验与 JSON 导入完全一致（id ≤16 字符、合法日历日期、title/content/geek_quote 非空）。
 
-`data/stories_*.json` 的角色变为「首播语料 + 备份」：镜像首启用它初始化数据库；仓库中的 `audit/sync/manifest/check` 流程保留，用于整理导出和校验一致性。需要删除线上故事时，用管理页删除或 `curl -X DELETE -H "Authorization: Bearer $TOKEN" .../api/v1/admin/stories/<id>`。
+`data/stories_*.json` 的角色是「首播语料 + 增量底本 + 备份」。需要删除线上故事时，用管理页删除或 `curl -X DELETE -H "Authorization: Bearer $TOKEN" .../api/v1/admin/stories/<id>`。
+
+**随镜像/重启增量导入**：`serve` 启动时会把 `BIODAYS_DATA_DIR` 指向的语料指纹与库内 `dataset_version` 比对，不一致才导入，且导入是**增量的**：
+
+- 新增/上游修改的故事 → 正常 upsert；
+- 通过管理页编辑过的故事 → 保留管理员版本（不会被语料覆盖）；
+- 通过管理页删除的语料故事 → 保持删除（墓碑机制），不会复活；
+- 管理员自建的故事 → 不受影响。
+
+因此「改 JSON → 跑 `python3 scripts/stories.py manifest` → 重新部署」即可把新语料增量上线下发，无需清库，也不会回滚线上修改。指纹一致时启动零导入。要强制重置为语料 canon（覆盖编辑、恢复删除），显式运行 `biodays seed [--strict]`。
 
 管理端故事 API 的认证是双通道：脚本用 `Authorization: Bearer <BIODAYS_ADMIN_API_TOKEN>`（可免 Origin/CSRF）；网页沿用登录会话 Cookie + `X-CSRF-Token`。Token 等同发布权限，只放服务端或 CI secret。完整接口见 `/swagger/index.html` 的 admin-stories 分组。
 

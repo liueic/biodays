@@ -1,19 +1,29 @@
 import { Button } from "@react95/core/Button";
 import { Frame } from "@react95/core/Frame";
 import { TitleBar } from "@react95/core/TitleBar";
-import { User2 } from "@react95/icons/User2";
 import Link from "next/link";
+
+import { DialogIcon, type DialogVariant } from "@/components/win/dialog-icons";
 
 type ErrorStateProps = {
   title: string;
   description: string;
   code?: string;
+  /** Message-box flavour; picks the classic 32px dialog icon. */
+  variant?: DialogVariant;
   action?: { href: string; label: string };
   children?: React.ReactNode;
 };
 
-/** Classic Win98 message box. */
-export function ErrorState({ title, description, code, action, children }: ErrorStateProps) {
+/** Classic Win98 message box: gradient title bar, 32px dialog icon, centred buttons. */
+export function ErrorState({
+  title,
+  description,
+  code,
+  variant = "critical",
+  action,
+  children,
+}: ErrorStateProps) {
   return (
     <div className="flex justify-center py-8">
       <Frame
@@ -21,18 +31,15 @@ export function ErrorState({ title, description, code, action, children }: Error
         bgColor="$material"
         boxShadow="$out"
         padding="$2"
-        className="w-full max-w-[420px]"
+        className="w-full max-w-[440px]"
       >
-        <TitleBar
-          active
-          title={code ? `biodays - 错误 ${code}` : "biodays"}
-          className="win98-title"
-        />
-        <div className="flex gap-4 p-4">
-          <User2 variant="32x32_4" width={32} height={32} aria-hidden className="shrink-0" />
+        <TitleBar active title={code ? `biodays - ${code}` : "biodays"} className="win98-title" />
+        <div className="flex min-h-[96px] items-center gap-5 px-6 py-5">
+          <DialogIcon variant={variant} />
           <div className="min-w-0">
             <p className="font-bold">{title}</p>
             <p className="mt-2">{description}</p>
+            {code && <p className="mt-2 text-[12px] opacity-70">代码：{code}</p>}
           </div>
         </div>
         <div className="flex justify-center gap-2 pb-3">

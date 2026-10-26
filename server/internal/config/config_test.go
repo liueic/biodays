@@ -125,3 +125,40 @@ func TestLoadAcceptsPostgresDSNAndShortAdminTokenFails(t *testing.T) {
 	_, err = config.Load()
 	require.ErrorContains(t, err, "BIODAYS_ADMIN_API_TOKEN")
 }
+
+func TestFeedbackConfigWithoutAdminAccount(t *testing.T) {
+	// Fresh deployment: no admin env values, no abuse secret. Both are now
+	// optional — the account is created with `biodays admin set-password` and
+	// the secret is generated and persisted at startup.
+	t.Setenv("BIODAYS_FEEDBACK_ENABLED", "true")
+
+	_, err := config.Load()
+	require.NoError(t, err)
+}
+
+func TestFeedbackConfigRejectsHalfAdminEnv(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct-horse-123"), bcrypt.MinCost)
+	require.NoError(t, err)
+	t.Setenv("BIODAYS_FEEDBACK_ENABLED", "true")
+	t.Setenv("BIODAYS_ADMIN_PASSWORD_HASH", string(hash))
+
+	_, err = config.Load()
+	require.ErrorContains(t, err, "must be set together")
+}
+
+func TestFeedbackConfigRejectsBadHash(t *testing.T) {
+	t.Setenv("BIODAYS_FEEDBACK_ENABLED", "true")
+	t.Setenv("BIODAYS_ADMIN_USERNAME", "admin")
+	t.Setenv("BIODAYS_ADMIN_PASSWORD_HASH", "not-a-bcrypt-hash")
+
+	_, err := config.Load()
+	require.ErrorContains(t, err, "not a valid bcrypt hash")
+}
+
+func TestFeedbackConfigRejectsShortAbuseSecret(t *testing.T) {
+	t.Setenv("BIODAYS_FEEDBACK_ENABLED", "true")
+	t.Setenv("BIODAYS_ABUSE_KEY_SECRET", "too-short")
+
+	_, err := config.Load()
+	require.ErrorContains(t, err, "BIODAYS_ABUSE_KEY_SECRET must be at least 32 bytes")
+}

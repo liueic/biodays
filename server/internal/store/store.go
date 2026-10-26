@@ -56,7 +56,7 @@ func OpenPostgres(dsn string) (*Store, error) {
 
 func newStoryStore(db *gorm.DB) (*Store, error) {
 	s := &Store{db: db}
-	if err := s.db.AutoMigrate(&model.Story{}, &model.Tag{}, &model.Dataset{}); err != nil {
+	if err := s.db.AutoMigrate(&model.Story{}, &model.Tag{}, &model.Dataset{}, &model.DatasetTombstone{}); err != nil {
 		return nil, err
 	}
 	return s, nil
