@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"net/url"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"biodays/server/internal/antispam"
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/model"
 	"biodays/server/internal/security"
@@ -43,6 +45,16 @@ var (
 	ErrIdempotencyConflict      = store.ErrRequestConflict
 	ErrMailNotFound             = store.ErrOutboxNotFound
 	ErrSMTPUnavailable          = errors.New("smtp is not enabled")
+	ErrChallengeDisabled        = errors.New("challenge is disabled")
+	ErrChallengeRequired        = errors.New("challenge is required")
+	ErrChallengeInvalid         = errors.New("challenge is invalid")
+	ErrChallengeExpired         = errors.New("challenge expired")
+	ErrChallengeConsumed        = store.ErrChallengeConsumed
+	ErrChallengeFailed          = errors.New("challenge failed")
+	ErrChallengeTooFast         = errors.New("challenge submitted too fast")
+	ErrTurnstileRequired        = errors.New("turnstile is required")
+	ErrTurnstileFailed          = errors.New("turnstile failed")
+	ErrVerificationUnavailable  = errors.New("verification unavailable")
 )
 
 // ValidationError maps to a 400 with a field-level message.
@@ -57,6 +69,22 @@ func fieldError(field, message string) error {
 	return &ValidationError{Field: field, Message: message}
 }
 
+type VerificationSettings struct {
+	PowEnabled       bool
+	PowDifficulty    int
+	PowTTL           time.Duration
+	PowMinSeconds    int
+	TurnstileEnabled bool
+	TurnstileSiteKey string
+	Turnstile        antispam.TurnstileVerifier
+}
+
+type SpamSettings struct {
+	Enabled    bool
+	AIAssisted bool
+	Judge      *antispam.Judge
+}
+
 type FeedbackSettings struct {
 	Enabled              bool
 	SubscriptionsEnabled bool
@@ -68,6 +96,13 @@ type FeedbackSettings struct {
 	SubmitDaily          int
 	ResendHourly         int
 	ResendDaily          int
+	ConfirmHourly        int
+	ConfirmDaily         int
+	ConfirmDailyGlobal   int
+	AdminMailHourly      int
+	Verification         VerificationSettings
+	Spam                 SpamSettings
+	Logger               *slog.Logger
 }
 
 type FeedbackService struct {
@@ -93,6 +128,27 @@ func NewFeedbackService(st *store.FeedbackStore, settings FeedbackSettings, secr
 	if settings.ResendDaily <= 0 {
 		settings.ResendDaily = 10
 	}
+	if settings.ConfirmHourly <= 0 {
+		settings.ConfirmHourly = 1
+	}
+	if settings.ConfirmDaily <= 0 {
+		settings.ConfirmDaily = 3
+	}
+	if settings.ConfirmDailyGlobal <= 0 {
+		settings.ConfirmDailyGlobal = 100
+	}
+	if settings.AdminMailHourly <= 0 {
+		settings.AdminMailHourly = 10
+	}
+	if settings.Verification.PowDifficulty <= 0 {
+		settings.Verification.PowDifficulty = 4
+	}
+	if settings.Verification.PowTTL <= 0 {
+		settings.Verification.PowTTL = 10 * time.Minute
+	}
+	if settings.Verification.PowMinSeconds < 0 {
+		settings.Verification.PowMinSeconds = 3
+	}
 	return &FeedbackService{store: st, settings: settings, secret: secret, now: now}
 }
 
@@ -114,25 +170,37 @@ func (s *FeedbackService) Options() model.FeedbackOptionsDTO {
 			ContentMin: ContentMin, ContentMax: ContentMax,
 			NicknameMax: NicknameMax, SourceURLMax: SourceURLMax,
 		},
+		Verification: model.VerificationOptionsDTO{
+			PowEnabled:       s.settings.Verification.PowEnabled,
+			PowDifficulty:    s.settings.Verification.PowDifficulty,
+			PowMinSeconds:    s.settings.Verification.PowMinSeconds,
+			TurnstileEnabled: s.settings.Verification.TurnstileEnabled,
+			TurnstileSiteKey: s.settings.Verification.TurnstileSiteKey,
+			AIAssisted:       s.settings.Spam.AIAssisted,
+		},
 	}
 }
 
 type SubmitInput struct {
-	RequestID string
-	Kind      string
-	Title     string
-	Content   string
-	SourceURL string
-	StoryID   string
-	Nickname  string
-	Email     string
-	Subscribe bool
-	Honeypot  string
+	RequestID      string
+	Kind           string
+	Title          string
+	Content        string
+	SourceURL      string
+	StoryID        string
+	Nickname       string
+	Email          string
+	Subscribe      bool
+	Honeypot       string
+	ChallengeID    string
+	ChallengeNonce string
+	TurnstileToken string
 }
 
 type SubmitOutcome struct {
-	Feedback model.Feedback
-	Created  bool
+	Feedback          model.Feedback
+	Created           bool
+	ConfirmationEmail string
 }
 
 type normalizedSubmission struct {
@@ -163,7 +231,7 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 	switch {
 	case err == nil:
 		if existing.RequestBodyHash == bodyHash {
-			return SubmitOutcome{Feedback: existing, Created: false}, nil
+			return SubmitOutcome{Feedback: existing, Created: false, ConfirmationEmail: existing.ConfirmationEmail}, nil
 		}
 		return SubmitOutcome{}, ErrIdempotencyConflict
 	case !errors.Is(err, store.ErrFeedbackNotFound):
@@ -175,10 +243,37 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 	}
 
 	now := s.now().UTC()
+	if err := s.consumeVerificationAttempts(ctx, clientIP, now); err != nil {
+		return SubmitOutcome{}, err
+	}
+	method, issuedAt, err := s.verifySubmission(ctx, in, clientIP, now)
+	if err != nil {
+		return SubmitOutcome{}, err
+	}
 	if err := s.consumeSubmitLimits(ctx, clientIP, now); err != nil {
 		return SubmitOutcome{}, err
 	}
 
+	decision := antispam.Decision{Verdict: model.SpamVerdictAllow, Signals: []string{}}
+	if s.settings.Spam.Judge != nil {
+		elapsed := -1
+		if !issuedAt.IsZero() {
+			elapsed = int(now.Sub(issuedAt).Seconds())
+		}
+		decision = s.settings.Spam.Judge.Evaluate(ctx, antispam.Input{
+			Title: normalized.Title, Content: normalized.Content, SourceURL: normalized.SourceURL,
+			Email: normalized.Email, ClientIP: clientIP, ElapsedSeconds: elapsed, Now: now,
+		})
+	}
+	isSpam := decision.Verdict == model.SpamVerdictSpam
+	status := model.FeedbackStatusPending
+	var closedAt *time.Time
+	if isSpam {
+		status = model.FeedbackStatusSpam
+		closedAt = &now
+	}
+
+	confirmationEmail := "none"
 	fb := model.Feedback{
 		ID:                 newFeedbackID(),
 		RequestID:          normalizedRequestID(in.RequestID),
@@ -190,68 +285,97 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 		StoryID:            normalized.StoryID,
 		Nickname:           normalized.Nickname,
 		Email:              normalized.Email,
-		Status:             model.FeedbackStatusPending,
+		Status:             status,
 		Version:            1,
 		SubscriptionStatus: model.SubscriptionNone,
+		ConfirmationEmail:  confirmationEmail,
+		ContentHash:        antispam.ContentHash(normalized.Title, normalized.Content),
+		EmailDomain:        antispam.EmailDomain(normalized.Email),
+		SpamScore:          decision.Score,
+		SpamVerdict:        decision.Verdict,
+		SpamSignals:        strings.Join(decision.Signals, ","),
+		SpamSource:         decision.Source,
+		SpamModel:          decision.Model,
+		SpamConfidence:     decision.Confidence,
+		VerificationMethod: method,
+		VerifiedAt:         &now,
 		CreatedAt:          now,
 		UpdatedAt:          now,
+		ClosedAt:           closedAt,
 	}
 
 	input := store.CreateSubmissionInput{
 		Feedback: &fb,
 		Event: &model.FeedbackEvent{
-			Seq: 1, FromStatus: "", ToStatus: model.FeedbackStatusPending,
+			Seq: 1, FromStatus: "", ToStatus: status,
 			Actor: "visitor", CreatedAt: now,
 		},
+		Now: now,
+	}
+	if method == model.VerificationMethodPow {
+		input.ChallengeID = strings.TrimSpace(in.ChallengeID)
 	}
 
-	if normalized.Subscribe {
+	if normalized.Subscribe && !isSpam {
 		fb.SubscriptionStatus = model.SubscriptionPendingConfirmation
 		fb.ConsentVersion = ConsentVersion
 		fb.ConsentedAt = &now
-		raw, token, err := s.newToken(fb.ID, model.TokenPurposeConfirm, normalized.Email, 24*time.Hour)
-		if err != nil {
-			return SubmitOutcome{}, err
+		if s.allowConfirmation(ctx, normalized.Email, now) {
+			raw, token, err := s.newToken(fb.ID, model.TokenPurposeConfirm, normalized.Email, 24*time.Hour)
+			if err != nil {
+				return SubmitOutcome{}, err
+			}
+			input.Tokens = append(input.Tokens, token)
+			data := s.confirmData(fb, token, raw)
+			payload, err := encodePayload(data)
+			if err != nil {
+				return SubmitOutcome{}, err
+			}
+			input.Outbox = append(input.Outbox, model.MailOutbox{
+				ID: newFeedbackID(), Type: model.MailTypeSubscriptionConfirm,
+				EventKey:  "confirm:" + fb.ID + ":" + token.TokenHash[:12],
+				Recipient: normalized.Email, Template: "subscription_confirm",
+				Payload: payload, Status: model.MailStatusPending, NextAttemptAt: now,
+			})
+			confirmationEmail = "queued"
+		} else {
+			confirmationEmail = "deferred"
 		}
-		input.Tokens = append(input.Tokens, token)
-		data := s.confirmData(fb, token, raw)
-		payload, err := encodePayload(data)
+		fb.ConfirmationEmail = confirmationEmail
+	}
+
+	adminNotified := false
+	if !isSpam && s.allowAdminNotification(ctx, now) {
+		adminNotified = true
+		adminData := s.dataFor(fb)
+		adminData.AdminURL = siteURL(s.settings.SiteURL) + "/admin/feedback/" + fb.ID
+		adminPayload, err := encodePayload(adminData)
 		if err != nil {
 			return SubmitOutcome{}, err
 		}
 		input.Outbox = append(input.Outbox, model.MailOutbox{
-			ID: newFeedbackID(), Type: model.MailTypeSubscriptionConfirm,
-			EventKey:  "confirm:" + fb.ID + ":" + token.TokenHash[:12],
-			Recipient: normalized.Email, Template: "subscription_confirm",
-			Payload: payload, Status: model.MailStatusPending, NextAttemptAt: now,
+			ID: newFeedbackID(), Type: model.MailTypeAdminNewFeedback,
+			EventKey: "admin:" + fb.ID, Recipient: s.settings.NotifyTo,
+			Template: "admin_new_feedback", Payload: adminPayload,
+			Status: model.MailStatusPending, NextAttemptAt: now,
 		})
 	}
-
-	adminData := s.dataFor(fb)
-	adminData.AdminURL = siteURL(s.settings.SiteURL) + "/admin/feedback/" + fb.ID
-	adminPayload, err := encodePayload(adminData)
-	if err != nil {
-		return SubmitOutcome{}, err
+	if !isSpam && !adminNotified && s.settings.Logger != nil {
+		s.settings.Logger.Warn("admin notification suppressed by hourly cap")
 	}
-	input.Outbox = append(input.Outbox, model.MailOutbox{
-		ID: newFeedbackID(), Type: model.MailTypeAdminNewFeedback,
-		EventKey: "admin:" + fb.ID, Recipient: s.settings.NotifyTo,
-		Template: "admin_new_feedback", Payload: adminPayload,
-		Status: model.MailStatusPending, NextAttemptAt: now,
-	})
 
 	if err := s.store.CreateSubmission(ctx, input); err != nil {
 		if errors.Is(err, store.ErrRequestConflict) {
 			// Concurrent retry with the same request_id.
 			existing, getErr := s.store.GetFeedbackByRequestID(ctx, fb.RequestID)
 			if getErr == nil && existing.RequestBodyHash == bodyHash {
-				return SubmitOutcome{Feedback: existing, Created: false}, nil
+				return SubmitOutcome{Feedback: existing, Created: false, ConfirmationEmail: existing.ConfirmationEmail}, nil
 			}
 			return SubmitOutcome{}, ErrIdempotencyConflict
 		}
 		return SubmitOutcome{}, err
 	}
-	return SubmitOutcome{Feedback: fb, Created: true}, nil
+	return SubmitOutcome{Feedback: fb, Created: true, ConfirmationEmail: confirmationEmail}, nil
 }
 
 func normalizeSubmission(in SubmitInput) (normalizedSubmission, error) {
@@ -458,6 +582,9 @@ func (s *FeedbackService) ResendConfirmation(ctx context.Context, feedbackID, em
 		return nil
 	}
 	now := s.now().UTC()
+	if !s.allowGlobalConfirmation(ctx, now) {
+		return nil
+	}
 	if !s.consumeResendLimits(ctx, normalizedEmail, feedbackID, now) {
 		return nil
 	}

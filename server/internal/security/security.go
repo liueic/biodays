@@ -18,6 +18,15 @@ func RandomToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+// RandomHex returns n random bytes encoded as lowercase hex.
+func RandomHex(n int) (string, error) {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 // HashToken is the only representation of session/subscription tokens kept in
 // the database.
 func HashToken(raw string) string {

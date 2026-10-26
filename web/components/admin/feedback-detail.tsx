@@ -24,10 +24,14 @@ import {
   KIND_LABELS,
   MAIL_STATUS_LABELS,
   MAIL_TYPE_LABELS,
+  SPAM_SIGNAL_LABELS,
+  SPAM_SOURCE_LABELS,
+  SPAM_VERDICT_LABELS,
   STATUS_LABELS,
   STATUS_ORDER,
   SUBSCRIPTION_LABELS,
   statusTone,
+  VERIFICATION_METHOD_LABELS,
 } from "@/lib/feedback-labels";
 import { safeExternalUrl } from "@/lib/url";
 
@@ -46,6 +50,7 @@ export function FeedbackDetailView({ id }: { id: string }) {
   const [error, setError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const applyDetail = useCallback((value: FeedbackDetail) => {
     setDetail(value);
@@ -106,6 +111,36 @@ export function FeedbackDetailView({ id }: { id: string }) {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!detail || restoring) return;
+    setRestoring(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await updateFeedback(detail.id, {
+        status: "pending",
+        internal_note: detail.internal_note,
+        public_reply: detail.public_reply,
+        version: detail.version,
+        notify_subscriber: false,
+      });
+      applyDetail(response.data);
+      setMessage("已恢复为待处理；不会发送用户邮件。");
+    } catch (reason) {
+      if (reason instanceof FeedbackApiError && reason.status === 409) {
+        setError("这条反馈已被其他请求修改，正在重新加载最新版本。");
+        const refreshed = await getFeedback(detail.id).catch(() => null);
+        if (refreshed) applyDetail(refreshed.data);
+      } else if (reason instanceof FeedbackApiError) {
+        setError(reason.message);
+      } else {
+        setError("恢复失败，请检查网络后重试。");
+      }
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -243,6 +278,39 @@ export function FeedbackDetailView({ id }: { id: string }) {
         </Fieldset>
       </div>
 
+      <Fieldset legend="反垃圾判断">
+        <div className="flex flex-col gap-2 text-[12px]">
+          <dl className="grid grid-cols-[6rem_1fr] gap-y-2">
+            <dt>评分</dt>
+            <dd>{detail.spam_score} / 100</dd>
+            <dt>判定</dt>
+            <dd>{(SPAM_VERDICT_LABELS[detail.spam_verdict] ?? detail.spam_verdict) || "—"}</dd>
+            <dt>来源</dt>
+            <dd>{(SPAM_SOURCE_LABELS[detail.spam_source] ?? detail.spam_source) || "—"}</dd>
+            <dt>验证方式</dt>
+            <dd>
+              {VERIFICATION_METHOD_LABELS[detail.verification_method] ??
+                detail.verification_method ??
+                "—"}
+            </dd>
+            <dt>AI 模型</dt>
+            <dd className="break-all">{detail.spam_model || "—"}</dd>
+            <dt>置信度</dt>
+            <dd>
+              {detail.spam_confidence > 0 ? `${Math.round(detail.spam_confidence * 100)}%` : "—"}
+            </dd>
+            <dt>判断时间</dt>
+            <dd>{formatDateTime(detail.verified_at)}</dd>
+          </dl>
+          {detail.spam_signals.length > 0 && (
+            <p className="text-[11px] text-[#555]">
+              信号：
+              {detail.spam_signals.map((signal) => SPAM_SIGNAL_LABELS[signal] ?? signal).join("、")}
+            </p>
+          )}
+        </div>
+      </Fieldset>
+
       <Fieldset legend="处理">
         <div className="flex flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -318,10 +386,20 @@ export function FeedbackDetailView({ id }: { id: string }) {
               type="button"
               className="px-4"
               onClick={handleSave}
-              disabled={saving || deleting}
+              disabled={saving || deleting || restoring}
             >
               {saving ? "保存中…" : notify ? "保存并通知订阅者" : "保存"}
             </Button>
+            {detail.spam_source && detail.spam_verdict === "spam" && (
+              <Button
+                type="button"
+                className="px-4"
+                onClick={handleRestore}
+                disabled={saving || deleting || restoring}
+              >
+                {restoring ? "恢复中…" : "恢复为待处理"}
+              </Button>
+            )}
             <Button
               type="button"
               className="px-4"

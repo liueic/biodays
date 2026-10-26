@@ -39,6 +39,9 @@ FROM gcr.io/distroless/nodejs24-debian13:nonroot
 COPY --from=server-build /out/biodays /usr/local/bin/biodays
 COPY --from=data-build --chown=65532:65532 /out/data/ /data/
 COPY --from=data-build --chown=65532:65532 /out/feedback/ /var/lib/biodays/
+# JSON corpus for first-boot import when storage runs on PostgreSQL; it also
+# documents what the baked-in SQLite contains.
+COPY --chown=65532:65532 data/ /stories-data/
 COPY --from=web-build --chown=65532:65532 /app/web/.next/standalone/ /app/
 COPY --from=web-build --chown=65532:65532 /app/web/.next/static/ /app/.next/static/
 COPY --from=web-build --chown=65532:65532 /app/web/public/ /app/public/
@@ -54,6 +57,28 @@ ENV NODE_ENV=production \
     BIODAYS_CORS_ORIGINS=* \
     BIODAYS_TRUSTED_PROXIES=127.0.0.1,::1 \
     BIODAYS_SITE_URL=http://localhost:8080 \
+    BIODAYS_FEEDBACK_CONFIRM_HOURLY=1 \
+    BIODAYS_FEEDBACK_CONFIRM_DAILY=3 \
+    BIODAYS_FEEDBACK_CONFIRM_DAILY_GLOBAL=100 \
+    BIODAYS_FEEDBACK_ADMIN_MAIL_HOURLY=10 \
+    BIODAYS_FEEDBACK_POW_ENABLED=true \
+    BIODAYS_FEEDBACK_POW_DIFFICULTY=4 \
+    BIODAYS_FEEDBACK_POW_TTL=10m \
+    BIODAYS_FEEDBACK_POW_MIN_SECONDS=3 \
+    BIODAYS_FEEDBACK_TURNSTILE_ENABLED=false \
+    BIODAYS_TURNSTILE_SITE_KEY= \
+    BIODAYS_TURNSTILE_HOSTNAMES= \
+    BIODAYS_TURNSTILE_TIMEOUT=3s \
+    BIODAYS_FEEDBACK_SPAM_ENABLED=true \
+    BIODAYS_FEEDBACK_SPAM_REVIEW_SCORE=30 \
+    BIODAYS_FEEDBACK_SPAM_BLOCK_SCORE=70 \
+    BIODAYS_AI_SPAM_ENABLED=false \
+    BIODAYS_AI_SPAM_MODEL=@cf/cloudflare/clef-flash \
+    BIODAYS_AI_SPAM_STYLE=decision \
+    BIODAYS_AI_SPAM_TIMEOUT=2s \
+    BIODAYS_AI_SPAM_THRESHOLD=0.8 \
+    BIODAYS_AI_SPAM_DAILY_LIMIT=500 \
+    BIODAYS_AI_SPAM_MAX_CHARS=4000 \
     PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin
 WORKDIR /app
 USER 65532:65532

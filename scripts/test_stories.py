@@ -1,4 +1,5 @@
 import contextlib
+import os
 import importlib.util
 import io
 import json
@@ -67,6 +68,48 @@ class StorySyncTests(unittest.TestCase):
         stories.write_json(self.source / "invalid.json", [invalid])
         with self.assertRaisesRegex(ValueError, "invalid date"):
             self.command("sync")
+
+
+class PublishSelectionTests(unittest.TestCase):
+    """collect_publish_entries picks stories without touching the network."""
+
+    class Args:
+        def __init__(self, file=None, id=None, all=False):
+            self.file = file
+            self.id = id
+            self.all = all
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.data = Path(self.temp.name)
+        self.patch = patch.object(stories, "DATA", self.data)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        stories.write_json(self.data / "stories_test.json", [entry("a"), entry("b")])
+
+    def test_default_publishes_whole_corpus(self):
+        entries = stories.collect_publish_entries(self.Args())
+        self.assertEqual([row["id"] for row in entries], ["a", "b"])
+
+    def test_file_and_id_selection(self):
+        export = self.data.parent / "export.json"
+        stories.write_json(export, [entry("c")])
+        args = self.Args(file=[export], id=["a"])
+        self.assertEqual([row["id"] for row in stories.collect_publish_entries(args)], ["a", "c"])
+
+    def test_unknown_id_fails(self):
+        with self.assertRaisesRegex(ValueError, "not found"):
+            stories.collect_publish_entries(self.Args(id=["missing"]))
+
+    def test_credentials_required(self):
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("BIODAYS_ADMIN_API_TOKEN", None)
+            args = self.Args()
+            args.api = ""
+            args.token = ""
+            with self.assertRaisesRegex(ValueError, "--api and --token"):
+                stories.require_credentials(args)
 
 
 if __name__ == "__main__":

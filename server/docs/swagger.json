@@ -438,6 +438,237 @@
                 }
             }
         },
+        "/api/v1/admin/stories": {
+            "get": {
+                "description": "与公开列表相同的过滤参数，默认 summary 视图；需要管理员会话或 API Token。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-stories"
+                ],
+                "summary": "管理端故事列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "月份 1-12",
+                        "name": "month",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "日期 1-31（需配合 month）",
+                        "name": "day",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "标签名",
+                        "name": "tag",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "标题/摘要/条目关键词",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "页码，默认 1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量，默认 20，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "summary（默认）或 full",
+                        "name": "view",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.StorySummaryListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "请求体为单篇故事对象，或 {\"stories\":[...]} 批量（≤200 篇）。按 id 幂等 upsert；批量逐条报告，单篇校验失败返回 400。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-stories"
+                ],
+                "summary": "发布/更新故事",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminStoryBatchResponse"
+                        }
+                    },
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminStoryUpsertResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "415": {
+                        "description": "Unsupported Media Type",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/stories/{id}": {
+            "get": {
+                "description": "返回单条故事的完整字段。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-stories"
+                ],
+                "summary": "管理端故事详情",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "故事 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminStoryResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "按 id 删除故事并清理孤立标签。",
+                "tags": [
+                    "admin-stories"
+                ],
+                "summary": "删除故事",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "故事 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "按 id 打补丁；出现的字段覆盖原值，缺席字段保持不变，id 不可改。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin-stories"
+                ],
+                "summary": "部分更新故事",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "故事 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.AdminStoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/feedback": {
             "post": {
                 "description": "无需注册。首次写入返回 201；相同 request_id 与相同内容的重试返回 200 与原回执；相同 request_id 不同内容返回 409。",
@@ -489,6 +720,44 @@
                     },
                     "413": {
                         "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/feedback/challenge": {
+            "post": {
+                "description": "返回一次性、绑定客户端 IP 的 SHA-256 工作量证明挑战。挑战在服务端存储，提交后单次消费。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feedback"
+                ],
+                "summary": "签发 PoW 挑战",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ChallengeResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
@@ -1049,6 +1318,29 @@
         }
     },
     "definitions": {
+        "biodays_server_internal_model.ChallengeDTO": {
+            "type": "object",
+            "properties": {
+                "challenge_id": {
+                    "type": "string"
+                },
+                "difficulty": {
+                    "type": "integer"
+                },
+                "expires_at": {
+                    "type": "string"
+                },
+                "issued_at": {
+                    "type": "string"
+                },
+                "min_submit_seconds": {
+                    "type": "integer"
+                },
+                "salt": {
+                    "type": "string"
+                }
+            }
+        },
         "biodays_server_internal_model.FeedbackDetailDTO": {
             "type": "object",
             "properties": {
@@ -1106,6 +1398,27 @@
                 "source_url": {
                     "type": "string"
                 },
+                "spam_confidence": {
+                    "type": "number"
+                },
+                "spam_model": {
+                    "type": "string"
+                },
+                "spam_score": {
+                    "type": "integer"
+                },
+                "spam_signals": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "spam_source": {
+                    "type": "string"
+                },
+                "spam_verdict": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string"
                 },
@@ -1122,6 +1435,12 @@
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "verification_method": {
+                    "type": "string"
+                },
+                "verified_at": {
                     "type": "string"
                 },
                 "version": {
@@ -1215,6 +1534,12 @@
                 "kind": {
                     "type": "string"
                 },
+                "spam_score": {
+                    "type": "integer"
+                },
+                "spam_verdict": {
+                    "type": "string"
+                },
                 "status": {
                     "type": "string"
                 },
@@ -1255,6 +1580,9 @@
                 },
                 "subscriptions_enabled": {
                     "type": "boolean"
+                },
+                "verification": {
+                    "$ref": "#/definitions/biodays_server_internal_model.VerificationOptionsDTO"
                 }
             }
         },
@@ -1415,9 +1743,45 @@
                 }
             }
         },
+        "biodays_server_internal_model.StorySummaryDTO": {
+            "type": "object",
+            "properties": {
+                "day": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lab_item": {
+                    "type": "string"
+                },
+                "month": {
+                    "type": "integer"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                },
+                "year": {
+                    "type": "integer"
+                }
+            }
+        },
         "biodays_server_internal_model.SubmitReceiptDTO": {
             "type": "object",
             "properties": {
+                "confirmation_email": {
+                    "type": "string",
+                    "example": "queued"
+                },
                 "created_at": {
                     "type": "string"
                 },
@@ -1445,6 +1809,64 @@
                 "name": {
                     "type": "string",
                     "example": "仪器极客"
+                }
+            }
+        },
+        "biodays_server_internal_model.VerificationOptionsDTO": {
+            "type": "object",
+            "properties": {
+                "ai_assisted": {
+                    "type": "boolean"
+                },
+                "pow_difficulty": {
+                    "type": "integer"
+                },
+                "pow_enabled": {
+                    "type": "boolean"
+                },
+                "pow_min_seconds": {
+                    "type": "integer"
+                },
+                "turnstile_enabled": {
+                    "type": "boolean"
+                },
+                "turnstile_site_key": {
+                    "type": "string"
+                }
+            }
+        },
+        "biodays_server_internal_service.StoryBatchResult": {
+            "type": "object",
+            "properties": {
+                "accepted": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_service.StoryUpsertItem"
+                    }
+                },
+                "rejected": {
+                    "type": "integer"
+                }
+            }
+        },
+        "biodays_server_internal_service.StoryUpsertItem": {
+            "type": "object",
+            "properties": {
+                "created": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string",
+                    "example": "Q1-01"
+                },
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -1529,6 +1951,30 @@
                 }
             }
         },
+        "internal_handler.AdminStoryBatchResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_service.StoryBatchResult"
+                }
+            }
+        },
+        "internal_handler.AdminStoryResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.StoryDTO"
+                }
+            }
+        },
+        "internal_handler.AdminStoryUpsertResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_service.StoryUpsertItem"
+                }
+            }
+        },
         "internal_handler.AdminUpdateMeta": {
             "type": "object",
             "properties": {
@@ -1548,6 +1994,14 @@
                 },
                 "meta": {
                     "$ref": "#/definitions/internal_handler.AdminUpdateMeta"
+                }
+            }
+        },
+        "internal_handler.ChallengeResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/biodays_server_internal_model.ChallengeDTO"
                 }
             }
         },
@@ -1689,6 +2143,20 @@
                 }
             }
         },
+        "internal_handler.StorySummaryListResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/biodays_server_internal_model.StorySummaryDTO"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.ListMeta"
+                }
+            }
+        },
         "internal_handler.SubscriptionResultDTO": {
             "type": "object",
             "properties": {
@@ -1755,6 +2223,12 @@
         "internal_handler.submitRequest": {
             "type": "object",
             "properties": {
+                "challenge_id": {
+                    "type": "string"
+                },
+                "challenge_nonce": {
+                    "type": "string"
+                },
                 "content": {
                     "type": "string"
                 },
@@ -1780,6 +2254,9 @@
                     "type": "boolean"
                 },
                 "title": {
+                    "type": "string"
+                },
+                "turnstile_token": {
                     "type": "string"
                 },
                 "website": {

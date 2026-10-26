@@ -45,6 +45,25 @@ const (
 )
 
 const (
+	VerificationMethodPow       = "pow"
+	VerificationMethodTurnstile = "turnstile"
+	VerificationMethodNone      = "none"
+)
+
+const (
+	SpamVerdictAllow  = "allow"
+	SpamVerdictReview = "review"
+	SpamVerdictSpam   = "spam"
+)
+
+const (
+	SpamSourceHeuristic = "heuristic"
+	SpamSourceAI        = "ai"
+	SpamSourceAIError   = "ai_error"
+	SpamSourceAIBudget  = "ai_budget"
+)
+
+const (
 	MailTypeAdminNewFeedback    = "admin_new_feedback"
 	MailTypeSubscriptionConfirm = "subscription_confirm"
 	MailTypeUserStatusUpdate    = "user_status_update"
@@ -78,10 +97,21 @@ type Feedback struct {
 	PublicReply        string     `gorm:"type:text;not null;default:''"`
 	Version            int        `gorm:"not null;default:1"`
 	SubscriptionStatus string     `gorm:"not null;size:32;default:none"`
+	ConfirmationEmail  string     `gorm:"not null;size:16;default:none"`
 	ConsentVersion     string     `gorm:"size:32;not null;default:''"`
 	ConsentedAt        *time.Time `gorm:"index"`
 	ConfirmedAt        *time.Time `gorm:"index"`
 	UnsubscribedAt     *time.Time `gorm:"index"`
+	ContentHash        string     `gorm:"not null;size:64;default:'';index:idx_feedback_content_hash"`
+	EmailDomain        string     `gorm:"not null;size:254;default:'';index:idx_feedback_email_domain"`
+	SpamScore          int        `gorm:"not null;default:0"`
+	SpamVerdict        string     `gorm:"not null;size:16;default:''"`
+	SpamSignals        string     `gorm:"not null;size:512;default:''"`
+	SpamSource         string     `gorm:"not null;size:32;default:''"`
+	SpamModel          string     `gorm:"not null;size:128;default:''"`
+	SpamConfidence     float64    `gorm:"not null;default:0"`
+	VerificationMethod string     `gorm:"not null;size:16;default:''"`
+	VerifiedAt         *time.Time `gorm:"index"`
 	CreatedAt          time.Time  `gorm:"not null;index:idx_feedback_status_created,priority:2,sort:desc;index:idx_feedback_kind_created,priority:2,sort:desc;index:idx_feedback_created"`
 	UpdatedAt          time.Time  `gorm:"not null"`
 	ClosedAt           *time.Time `gorm:"index"`
@@ -150,6 +180,21 @@ type AbuseBucket struct {
 	WindowStart time.Time `gorm:"not null;uniqueIndex:idx_abuse_key_window,priority:2"`
 	Count       int       `gorm:"not null;default:0"`
 	ExpiresAt   time.Time `gorm:"not null;index:idx_abuse_expires"`
+}
+
+// FeedbackChallenge is a single-use proof-of-work challenge bound to one
+// client IP. Only HMACs are stored; the raw IP never reaches the database.
+type FeedbackChallenge struct {
+	ID         string     `gorm:"primaryKey;size:32"`
+	IPHash     string     `gorm:"not null;size:64;index:idx_feedback_challenges_ip_expires,priority:1"`
+	Salt       string     `gorm:"not null;size:64"`
+	Signature  string     `gorm:"not null;size:64"`
+	Difficulty int        `gorm:"not null;default:4"`
+	MinSeconds int        `gorm:"not null;default:3"`
+	IssuedAt   time.Time  `gorm:"not null"`
+	ExpiresAt  time.Time  `gorm:"not null;index:idx_feedback_challenges_ip_expires,priority:2;index:idx_feedback_challenges_expires"`
+	ConsumedAt *time.Time `gorm:"index"`
+	FeedbackID string     `gorm:"not null;size:32;default:''"`
 }
 
 // FeedbackDeletion is the minimal post-deletion audit record: no content and

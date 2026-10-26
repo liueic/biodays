@@ -7,6 +7,7 @@ import (
 
 	"biodays/server/internal/model"
 
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -14,54 +15,78 @@ import (
 )
 
 var (
-	ErrFeedbackNotFound = errors.New("feedback not found")
-	ErrVersionConflict  = errors.New("feedback version conflict")
-	ErrRequestConflict  = errors.New("request id already used with different content")
-	ErrTokenInvalid     = errors.New("token invalid")
-	ErrTokenExpired     = errors.New("token expired")
-	ErrTokenConsumed    = errors.New("token already used")
-	ErrOutboxNotFound   = errors.New("mail task not found")
+	ErrFeedbackNotFound  = errors.New("feedback not found")
+	ErrVersionConflict   = errors.New("feedback version conflict")
+	ErrRequestConflict   = errors.New("request id already used with different content")
+	ErrTokenInvalid      = errors.New("token invalid")
+	ErrTokenExpired      = errors.New("token expired")
+	ErrTokenConsumed     = errors.New("token already used")
+	ErrOutboxNotFound    = errors.New("mail task not found")
+	ErrChallengeNotFound = errors.New("challenge not found")
+	ErrChallengeConsumed = errors.New("challenge already consumed")
 )
 
-// FeedbackStore owns feedback.db. It is deliberately separate from Store so
-// story rebuilds never touch user submissions.
+// FeedbackStore owns the feedback tables (submissions, sessions, tokens, mail).
 type FeedbackStore struct {
 	db *gorm.DB
 }
 
+// OpenFeedback opens feedback.db on SQLite. It is deliberately separate from
+// Store so story rebuilds never touch user submissions.
 func OpenFeedback(path string) (*FeedbackStore, error) {
-	db, err := gorm.Open(sqlite.Open(sqliteDSN(path)), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open(sqliteDSN(path)), feedbackGormConfig())
+	if err != nil {
+		return nil, err
+	}
+	// WAL allows concurrent readers; writes still serialise. Four connections
+	// cover HTTP writes plus the single mail worker.
+	if err := setPool(db, 4, 2); err != nil {
+		return nil, err
+	}
+	return newFeedbackStore(db)
+}
+
+// OpenFeedbackPostgres opens the feedback tables in the PostgreSQL database
+// named by dsn. Stories live in the same database; table names do not overlap.
+func OpenFeedbackPostgres(dsn string) (*FeedbackStore, error) {
+	db, err := gorm.Open(postgres.Open(dsn), feedbackGormConfig())
+	if err != nil {
+		return nil, err
+	}
+	if err := setPool(db, 10, 5); err != nil {
+		return nil, err
+	}
+	return newFeedbackStore(db)
+}
+
+func feedbackGormConfig() *gorm.Config {
+	return &gorm.Config{
 		TranslateError: true,
 		Logger: gormlogger.New(discardWriter{}, gormlogger.Config{
 			SlowThreshold:             time.Second,
 			LogLevel:                  gormlogger.Warn,
 			IgnoreRecordNotFoundError: true,
 		}),
-	})
-	if err != nil {
-		return nil, err
 	}
-	pool, err := db.DB()
-	if err != nil {
-		return nil, err
-	}
-	// WAL allows concurrent readers; writes still serialise. Four connections
-	// cover HTTP writes plus the single mail worker.
-	pool.SetMaxOpenConns(4)
-	pool.SetMaxIdleConns(2)
+}
 
+func newFeedbackStore(db *gorm.DB) (*FeedbackStore, error) {
 	s := &FeedbackStore{db: db}
 	if err := s.db.AutoMigrate(
 		&model.Feedback{}, &model.FeedbackEvent{}, &model.AdminSession{},
 		&model.SubscriptionToken{}, &model.MailOutbox{}, &model.AbuseBucket{},
-		&model.FeedbackDeletion{},
+		&model.FeedbackChallenge{}, &model.FeedbackDeletion{},
 	); err != nil {
 		return nil, err
 	}
-	// Early builds created a unique index on feedback_events.seq alone, which
-	// allowed only one feedback per database. Replace it with (feedback_id, seq).
-	if err := s.repairFeedbackEventIndex(); err != nil {
-		return nil, err
+	// The index repair is SQLite-specific; AutoMigrate already creates the
+	// composite unique index on PostgreSQL.
+	if s.db.Dialector.Name() != "postgres" {
+		// Early builds created a unique index on feedback_events.seq alone, which
+		// allowed only one feedback per database. Replace it with (feedback_id, seq).
+		if err := s.repairFeedbackEventIndex(); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
@@ -102,20 +127,37 @@ func (s *FeedbackStore) Ping(ctx context.Context) error {
 
 // BackupTo writes a consistent snapshot with VACUUM INTO, including WAL data.
 func (s *FeedbackStore) BackupTo(ctx context.Context, path string) error {
+	if s.db.Dialector.Name() == "postgres" {
+		return ErrBackupUnsupported
+	}
 	return s.db.WithContext(ctx).Exec("VACUUM INTO ?", path).Error
 }
 
 type CreateSubmissionInput struct {
-	Feedback *model.Feedback
-	Event    *model.FeedbackEvent
-	Tokens   []model.SubscriptionToken
-	Outbox   []model.MailOutbox
+	Feedback    *model.Feedback
+	Event       *model.FeedbackEvent
+	Tokens      []model.SubscriptionToken
+	Outbox      []model.MailOutbox
+	ChallengeID string
+	Now         time.Time
 }
 
 // CreateSubmission writes the feedback, event, tokens and mail jobs in one
 // transaction. SMTP is never touched here.
 func (s *FeedbackStore) CreateSubmission(ctx context.Context, in CreateSubmissionInput) error {
+	now := in.Now.UTC()
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if in.ChallengeID != "" {
+			result := tx.Model(&model.FeedbackChallenge{}).
+				Where("id = ? AND consumed_at IS NULL AND expires_at > ?", in.ChallengeID, now).
+				Updates(map[string]any{"consumed_at": now, "feedback_id": in.Feedback.ID})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return ErrChallengeConsumed
+			}
+		}
 		if err := tx.Create(in.Feedback).Error; err != nil {
 			if errors.Is(err, gorm.ErrDuplicatedKey) {
 				return ErrRequestConflict
@@ -159,6 +201,35 @@ func (s *FeedbackStore) GetFeedbackByRequestID(ctx context.Context, requestID st
 		return model.Feedback{}, ErrFeedbackNotFound
 	}
 	return fb, err
+}
+
+func (s *FeedbackStore) CreateChallenge(ctx context.Context, challenge *model.FeedbackChallenge) error {
+	return s.db.WithContext(ctx).Create(challenge).Error
+}
+
+func (s *FeedbackStore) GetChallenge(ctx context.Context, id string) (model.FeedbackChallenge, error) {
+	var challenge model.FeedbackChallenge
+	err := s.db.WithContext(ctx).Where("id = ?", id).First(&challenge).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return model.FeedbackChallenge{}, ErrChallengeNotFound
+	}
+	return challenge, err
+}
+
+func (s *FeedbackStore) CountFeedbackByContentHash(ctx context.Context, hash string, since time.Time) (int64, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&model.Feedback{}).
+		Where("content_hash = ? AND created_at >= ?", hash, since.UTC()).
+		Count(&count).Error
+	return count, err
+}
+
+func (s *FeedbackStore) CountFeedbackByEmailDomain(ctx context.Context, domain string, since time.Time) (int64, error) {
+	var count int64
+	err := s.db.WithContext(ctx).Model(&model.Feedback{}).
+		Where("email_domain = ? AND created_at >= ?", domain, since.UTC()).
+		Count(&count).Error
+	return count, err
 }
 
 func (s *FeedbackStore) GetFeedback(ctx context.Context, id string) (model.Feedback, error) {
@@ -697,6 +768,7 @@ type CleanupReport struct {
 	Sessions          int64
 	ConfirmTokens     int64
 	AbuseBuckets      int64
+	Challenges        int64
 	SentOutbox        int64
 	ContactScrubbed   int64
 	TokensInvalidated int64
@@ -725,6 +797,12 @@ func (s *FeedbackStore) Cleanup(ctx context.Context, now time.Time) (CleanupRepo
 			return res.Error
 		}
 
+		res = tx.Where("expires_at < ?", now).Delete(&model.FeedbackChallenge{})
+		report.Challenges = res.RowsAffected
+		if res.Error != nil {
+			return res.Error
+		}
+
 		res = tx.Model(&model.MailOutbox{}).Where("status = ? AND payload <> ''", model.MailStatusSent).Update("payload", "")
 		report.SentOutbox = res.RowsAffected
 		if res.Error != nil {
@@ -745,6 +823,7 @@ func (s *FeedbackStore) Cleanup(ctx context.Context, now time.Time) (CleanupRepo
 		for _, fb := range closed {
 			if err := tx.Model(&model.Feedback{}).Where("id = ?", fb.ID).Updates(map[string]any{
 				"email":               "",
+				"email_domain":        "",
 				"nickname":            "",
 				"subscription_status": model.SubscriptionUnsubscribed,
 				"unsubscribed_at":     now,

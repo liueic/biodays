@@ -14,9 +14,15 @@ import (
 )
 
 type Config struct {
-	Port           int      `env:"BIODAYS_PORT" envDefault:"8080"`
-	DBPath         string   `env:"BIODAYS_DB_PATH" envDefault:"./biodays.db"`
-	DataDir        string   `env:"BIODAYS_DATA_DIR"`
+	Port    int    `env:"BIODAYS_PORT" envDefault:"8080"`
+	DBPath  string `env:"BIODAYS_DB_PATH" envDefault:"./biodays.db"`
+	DataDir string `env:"BIODAYS_DATA_DIR"`
+	// DBDSN switches both story and feedback storage to one PostgreSQL
+	// database when set; the SQLite file paths are then ignored.
+	DBDSN string `env:"BIODAYS_DB_DSN"`
+	// AdminAPIToken is an optional static bearer token that grants
+	// story-management access only (programmatic publishing).
+	AdminAPIToken  string   `env:"BIODAYS_ADMIN_API_TOKEN"`
 	CORSOrigins    []string `env:"BIODAYS_CORS_ORIGINS" envSeparator:"," envDefault:"http://localhost:3000"`
 	TrustedProxies []string `env:"BIODAYS_TRUSTED_PROXIES" envSeparator:","`
 	RateLimit      int      `env:"BIODAYS_RATE_LIMIT" envDefault:"60"`
@@ -34,6 +40,32 @@ type Config struct {
 	SubmitDailyLimit     int           `env:"BIODAYS_FEEDBACK_SUBMIT_DAILY" envDefault:"20"`
 	ResendHourlyLimit    int           `env:"BIODAYS_FEEDBACK_RESEND_HOURLY" envDefault:"3"`
 	ResendDailyLimit     int           `env:"BIODAYS_FEEDBACK_RESEND_DAILY" envDefault:"10"`
+
+	ConfirmHourlyLimit   int           `env:"BIODAYS_FEEDBACK_CONFIRM_HOURLY" envDefault:"1"`
+	ConfirmDailyLimit    int           `env:"BIODAYS_FEEDBACK_CONFIRM_DAILY" envDefault:"3"`
+	ConfirmDailyGlobal   int           `env:"BIODAYS_FEEDBACK_CONFIRM_DAILY_GLOBAL" envDefault:"100"`
+	AdminMailHourlyLimit int           `env:"BIODAYS_FEEDBACK_ADMIN_MAIL_HOURLY" envDefault:"10"`
+	PowEnabled           bool          `env:"BIODAYS_FEEDBACK_POW_ENABLED" envDefault:"true"`
+	PowDifficulty        int           `env:"BIODAYS_FEEDBACK_POW_DIFFICULTY" envDefault:"4"`
+	PowTTL               time.Duration `env:"BIODAYS_FEEDBACK_POW_TTL" envDefault:"10m"`
+	PowMinSeconds        int           `env:"BIODAYS_FEEDBACK_POW_MIN_SECONDS" envDefault:"3"`
+	TurnstileEnabled     bool          `env:"BIODAYS_FEEDBACK_TURNSTILE_ENABLED" envDefault:"false"`
+	TurnstileSiteKey     string        `env:"BIODAYS_TURNSTILE_SITE_KEY"`
+	TurnstileSecretKey   string        `env:"BIODAYS_TURNSTILE_SECRET_KEY"`
+	TurnstileHostnames   []string      `env:"BIODAYS_TURNSTILE_HOSTNAMES" envSeparator:","`
+	TurnstileTimeout     time.Duration `env:"BIODAYS_TURNSTILE_TIMEOUT" envDefault:"3s"`
+	SpamEnabled          bool          `env:"BIODAYS_FEEDBACK_SPAM_ENABLED" envDefault:"true"`
+	SpamBlockScore       int           `env:"BIODAYS_FEEDBACK_SPAM_BLOCK_SCORE" envDefault:"70"`
+	SpamReviewScore      int           `env:"BIODAYS_FEEDBACK_SPAM_REVIEW_SCORE" envDefault:"30"`
+	AISpamEnabled        bool          `env:"BIODAYS_AI_SPAM_ENABLED" envDefault:"false"`
+	CFAccountID          string        `env:"BIODAYS_CF_ACCOUNT_ID"`
+	CFAPIToken           string        `env:"BIODAYS_CF_API_TOKEN"`
+	AISpamModel          string        `env:"BIODAYS_AI_SPAM_MODEL" envDefault:"@cf/cloudflare/clef-flash"`
+	AISpamStyle          string        `env:"BIODAYS_AI_SPAM_STYLE" envDefault:"decision"`
+	AISpamTimeout        time.Duration `env:"BIODAYS_AI_SPAM_TIMEOUT" envDefault:"2s"`
+	AISpamThreshold      float64       `env:"BIODAYS_AI_SPAM_THRESHOLD" envDefault:"0.8"`
+	AISpamDailyLimit     int           `env:"BIODAYS_AI_SPAM_DAILY_LIMIT" envDefault:"500"`
+	AISpamMaxChars       int           `env:"BIODAYS_AI_SPAM_MAX_CHARS" envDefault:"4000"`
 
 	SMTPEnabled      bool          `env:"BIODAYS_SMTP_ENABLED" envDefault:"false"`
 	SMTPHost         string        `env:"BIODAYS_SMTP_HOST"`
@@ -73,6 +105,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.TrustedProxies = trustedProxies
+	cfg.TurnstileHostnames = normalizeHostnames(cfg.TurnstileHostnames)
 
 	if _, err := ParseLogLevel(cfg.LogLevel); err != nil {
 		return Config{}, err
@@ -81,11 +114,29 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	cfg.CORSOrigins = withSiteOrigin(cfg.CORSOrigins, cfg.SiteURL)
+	if err := validateStorageConfig(cfg); err != nil {
+		return Config{}, err
+	}
 	if err := validateFeedbackConfig(cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
 }
+
+func validateStorageConfig(cfg Config) error {
+	if strings.TrimSpace(cfg.DBDSN) == "" {
+		// nothing more to check for SQLite mode
+	} else if !strings.HasPrefix(cfg.DBDSN, "postgres://") && !strings.HasPrefix(cfg.DBDSN, "postgresql://") {
+		return fmt.Errorf("BIODAYS_DB_DSN must start with postgres:// or postgresql://")
+	}
+	if cfg.AdminAPIToken != "" && len(cfg.AdminAPIToken) < 32 {
+		return fmt.Errorf("BIODAYS_ADMIN_API_TOKEN must be at least 32 bytes when set")
+	}
+	return nil
+}
+
+// UsingPostgres reports whether storage runs on PostgreSQL via BIODAYS_DB_DSN.
+func (c Config) UsingPostgres() bool { return strings.TrimSpace(c.DBDSN) != "" }
 
 func parseTrustedProxies(values []string) ([]string, error) {
 	proxies := make([]string, 0, len(values))
@@ -102,6 +153,17 @@ func parseTrustedProxies(values []string) ([]string, error) {
 		proxies = append(proxies, proxy)
 	}
 	return proxies, nil
+}
+
+func normalizeHostnames(values []string) []string {
+	hosts := make([]string, 0, len(values))
+	for _, value := range values {
+		host := strings.ToLower(strings.TrimSpace(value))
+		if host != "" {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
 }
 
 func ParseLogLevel(value string) (slog.Level, error) {
@@ -174,6 +236,54 @@ func validateFeedbackConfig(cfg Config) error {
 		}
 		if cfg.SubmitHourlyLimit <= 0 || cfg.SubmitDailyLimit <= 0 || cfg.ResendHourlyLimit <= 0 || cfg.ResendDailyLimit <= 0 {
 			return fmt.Errorf("feedback rate limits must be positive")
+		}
+		if cfg.ConfirmHourlyLimit <= 0 || cfg.ConfirmDailyLimit <= 0 || cfg.ConfirmDailyGlobal <= 0 || cfg.AdminMailHourlyLimit <= 0 {
+			return fmt.Errorf("feedback mail limits must be positive")
+		}
+		if cfg.SpamReviewScore < 1 || cfg.SpamBlockScore < 50 || cfg.SpamBlockScore > 100 || cfg.SpamReviewScore >= cfg.SpamBlockScore {
+			return fmt.Errorf("feedback spam score thresholds are invalid")
+		}
+		if cfg.PowEnabled {
+			if cfg.PowDifficulty < 3 || cfg.PowDifficulty > 5 {
+				return fmt.Errorf("BIODAYS_FEEDBACK_POW_DIFFICULTY must be between 3 and 5")
+			}
+			if cfg.PowTTL < time.Minute || cfg.PowTTL > time.Hour {
+				return fmt.Errorf("BIODAYS_FEEDBACK_POW_TTL must be between 1m and 1h")
+			}
+			if cfg.PowMinSeconds < 0 || cfg.PowMinSeconds > 30 {
+				return fmt.Errorf("BIODAYS_FEEDBACK_POW_MIN_SECONDS must be between 0 and 30")
+			}
+		}
+		if cfg.TurnstileEnabled {
+			if strings.TrimSpace(cfg.TurnstileSiteKey) == "" || strings.TrimSpace(cfg.TurnstileSecretKey) == "" {
+				return fmt.Errorf("Turnstile is enabled but BIODAYS_TURNSTILE_SITE_KEY or BIODAYS_TURNSTILE_SECRET_KEY is missing")
+			}
+			if cfg.TurnstileTimeout < time.Second || cfg.TurnstileTimeout > 10*time.Second {
+				return fmt.Errorf("BIODAYS_TURNSTILE_TIMEOUT must be between 1s and 10s")
+			}
+		}
+		if cfg.AISpamEnabled {
+			if !cfg.SpamEnabled {
+				return fmt.Errorf("BIODAYS_AI_SPAM_ENABLED requires BIODAYS_FEEDBACK_SPAM_ENABLED=true")
+			}
+			if strings.TrimSpace(cfg.CFAccountID) == "" || strings.TrimSpace(cfg.CFAPIToken) == "" || strings.TrimSpace(cfg.AISpamModel) == "" {
+				return fmt.Errorf("AI spam classification is enabled but Cloudflare account ID, API token, or model is missing")
+			}
+			if cfg.AISpamStyle != "decision" && cfg.AISpamStyle != "chat" {
+				return fmt.Errorf("BIODAYS_AI_SPAM_STYLE must be decision or chat")
+			}
+			if cfg.AISpamTimeout < time.Second || cfg.AISpamTimeout > 10*time.Second {
+				return fmt.Errorf("BIODAYS_AI_SPAM_TIMEOUT must be between 1s and 10s")
+			}
+			if cfg.AISpamThreshold < 0.5 || cfg.AISpamThreshold > 1 {
+				return fmt.Errorf("BIODAYS_AI_SPAM_THRESHOLD must be between 0.5 and 1")
+			}
+			if cfg.AISpamDailyLimit <= 0 || cfg.AISpamDailyLimit > 10000 {
+				return fmt.Errorf("BIODAYS_AI_SPAM_DAILY_LIMIT must be between 1 and 10000")
+			}
+			if cfg.AISpamMaxChars < 500 || cfg.AISpamMaxChars > 8000 {
+				return fmt.Errorf("BIODAYS_AI_SPAM_MAX_CHARS must be between 500 and 8000")
+			}
 		}
 	}
 	if cfg.SMTPEnabled {

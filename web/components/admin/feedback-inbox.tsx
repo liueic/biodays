@@ -3,6 +3,7 @@
 import { Button } from "@react95/core/Button";
 import { Dropdown } from "@react95/core/Dropdown";
 import { Input } from "@react95/core/Input";
+import { Bookmark } from "@react95/icons/Bookmark";
 import { Folder } from "@react95/icons/Folder";
 import { FolderOpen } from "@react95/icons/FolderOpen";
 import { Mail } from "@react95/icons/Mail";
@@ -25,6 +26,7 @@ import {
 import {
   formatDateTime,
   KIND_LABELS,
+  SPAM_VERDICT_LABELS,
   STATUS_LABELS,
   STATUS_ORDER,
   SUBSCRIPTION_LABELS,
@@ -158,6 +160,14 @@ export function FeedbackInbox() {
           >
             <Mail variant="16x16_4" aria-hidden />
             <span>邮件状态</span>
+          </Button>
+          <Button
+            as={Link}
+            href="/admin/stories"
+            className="mail-tool-button mail-tool-button--inline"
+          >
+            <Bookmark variant="16x16_4" aria-hidden />
+            <span>故事管理</span>
           </Button>
         </div>
         <div className="mail-toolbar-spacer" />
@@ -308,7 +318,21 @@ export function FeedbackInbox() {
                           className="mail-message-subject mail-message-open-subject"
                           title={item.title}
                         >
-                          <span className="mail-message-title-text">{item.title}</span>
+                          <span className="mail-message-title-text">
+                            {item.title}
+                            {item.spam_verdict && item.spam_verdict !== "allow" && (
+                              <span
+                                className={`ml-1 inline-block px-1 text-[10px] ${
+                                  item.spam_verdict === "spam"
+                                    ? "bg-[#ffdede] text-[#7a0000]"
+                                    : "bg-[#fff4c2] text-[#6b5200]"
+                                }`}
+                              >
+                                {SPAM_VERDICT_LABELS[item.spam_verdict] ?? item.spam_verdict}{" "}
+                                {item.spam_score}
+                              </span>
+                            )}
+                          </span>
                           <span className="mail-message-snippet">{item.summary}</span>
                         </Link>
                         <button

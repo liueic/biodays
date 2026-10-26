@@ -35,6 +35,42 @@ export const MAIL_TYPE_LABELS: Record<string, string> = {
   subscription_confirm: "订阅确认",
   user_status_update: "处理结果",
   smtp_test: "SMTP 测试",
+  admin_digest: "管理员摘要",
+};
+
+export const SPAM_VERDICT_LABELS: Record<string, string> = {
+  allow: "正常",
+  review: "待复核",
+  spam: "垃圾",
+};
+
+export const SPAM_SOURCE_LABELS: Record<string, string> = {
+  heuristic: "规则判断",
+  ai: "AI 复核",
+  ai_error: "AI 异常",
+  ai_budget: "AI 预算用尽",
+};
+
+export const VERIFICATION_METHOD_LABELS: Record<string, string> = {
+  pow: "工作量证明",
+  turnstile: "Turnstile",
+  none: "无",
+};
+
+export const SPAM_SIGNAL_LABELS: Record<string, string> = {
+  many_links: "链接过多",
+  several_links: "多个链接",
+  shortener_link: "短链接",
+  zero_width: "零宽字符",
+  control_chars: "控制字符",
+  duplicate_content: "重复内容",
+  email_domain_burst: "邮箱域名高频",
+  disposable_email: "一次性邮箱",
+  spam_keyword: "垃圾关键词",
+  too_fast: "提交过快",
+  url_only: "仅链接",
+  excessive_caps: "大量大写",
+  repeated_chars: "重复字符",
 };
 
 export const MAIL_STATUS_LABELS: Record<string, string> = {

@@ -8,10 +8,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"biodays/server/internal/antispam"
 	"biodays/server/internal/config"
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/model"
@@ -34,6 +36,10 @@ type feedbackHarness struct {
 }
 
 func newFeedbackHarness(t *testing.T) *feedbackHarness {
+	return newFeedbackHarnessWithSettings(t, nil)
+}
+
+func newFeedbackHarnessWithSettings(t *testing.T, tweak func(*service.FeedbackSettings)) *feedbackHarness {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	name := strings.ReplaceAll(t.Name(), "/", "_")
@@ -51,6 +57,9 @@ func newFeedbackHarness(t *testing.T) *feedbackHarness {
 		Enabled: true, SubscriptionsEnabled: true, SMTPEnabled: true,
 		SiteURL: adminOrigin, NotifyTo: "admin@biodays.test",
 		SubmitHourly: 1000, SubmitDaily: 1000, ResendHourly: 1000, ResendDaily: 1000,
+	}
+	if tweak != nil {
+		tweak(&settings)
 	}
 	feedbackService := service.NewFeedbackService(feedbackStore, settings, h.secret, func() time.Time { return h.now })
 	hash, err := bcrypt.GenerateFromPassword([]byte("correct-horse-123"), bcrypt.MinCost)
@@ -334,4 +343,63 @@ func TestFeedbackDisabledContract(t *testing.T) {
 	rec = httptest.NewRecorder()
 	engine.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/me", nil))
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+func TestFeedbackContentTypeAndOrigin(t *testing.T) {
+	h := newFeedbackHarness(t)
+	body := `{"request_id":"req-http-origin-1","kind":"topic","title":"想了解 GFP","content":"希望讲讲荧光蛋白怎样从水母研究走向实验室应用。"}`
+
+	rec := h.request(t, http.MethodPost, "/api/v1/feedback", body, map[string]string{"Content-Type": "text/plain"})
+	require.Equal(t, http.StatusUnsupportedMediaType, rec.Code)
+	require.Contains(t, rec.Body.String(), "UNSUPPORTED_MEDIA_TYPE")
+
+	rec = h.request(t, http.MethodPost, "/api/v1/feedback", body, map[string]string{"Origin": "https://evil.test"})
+	require.Equal(t, http.StatusForbidden, rec.Code)
+
+	rec = h.request(t, http.MethodPost, "/api/v1/feedback", body, map[string]string{"Origin": adminOrigin})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+}
+
+func TestChallengeEndpointAndPowSubmission(t *testing.T) {
+	h := newFeedbackHarnessWithSettings(t, func(settings *service.FeedbackSettings) {
+		settings.Verification.PowEnabled = true
+		settings.Verification.PowDifficulty = 2
+		settings.Verification.PowMinSeconds = 1
+	})
+
+	rec := h.request(t, http.MethodPost, "/api/v1/feedback/challenge", "", nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
+	var challenge struct {
+		Data struct {
+			ChallengeID string `json:"challenge_id"`
+			Salt        string `json:"salt"`
+			Difficulty  int    `json:"difficulty"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &challenge))
+	require.NotEmpty(t, challenge.Data.ChallengeID)
+
+	nonce := ""
+	for i := 0; ; i++ {
+		candidate := strconv.Itoa(i)
+		if antispam.VerifyPoW(challenge.Data.Salt, candidate, challenge.Data.Difficulty) {
+			nonce = candidate
+			break
+		}
+	}
+	h.now = h.now.Add(time.Second)
+	body := fmt.Sprintf(`{"request_id":"req-pow-http-1","kind":"topic","title":"想了解 GFP","content":"希望讲讲荧光蛋白怎样从水母研究走向实验室应用。","challenge_id":%q,"challenge_nonce":%q}`, challenge.Data.ChallengeID, nonce)
+	rec = h.request(t, http.MethodPost, "/api/v1/feedback", body, nil)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	rec = h.request(t, http.MethodPost, "/api/v1/feedback/challenge", "", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestChallengeDisabled(t *testing.T) {
+	h := newFeedbackHarness(t)
+	rec := h.request(t, http.MethodPost, "/api/v1/feedback/challenge", "", nil)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "CHALLENGE_DISABLED")
 }

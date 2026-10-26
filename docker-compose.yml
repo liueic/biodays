@@ -1,24 +1,42 @@
-# biodays —— 单容器部署（Next.js + Go API 同一端口）
+# biodays —— 双服务部署（Next.js + Go API 容器 + PostgreSQL）
 #
 # 镜像来自 CNB Docker 制品库（由 .cnb.yml 的 container 流水线推送）：
 #   docker.cnb.cool/ciallo.cv/biodays:<tag>
 #
 # 用法：
-#   cp .env.example .env   # 至少设置 BIODAYS_SITE_URL
+#   cp .env.example .env   # 至少设置 BIODAYS_SITE_URL 与 BIODAYS_POSTGRES_PASSWORD
 #   docker compose pull && docker compose up -d
 #
-# 注意：.env 中的 bcrypt 哈希和含 $ 的 SMTP 密码必须用单引号包住，
-# 例如 BIODAYS_ADMIN_PASSWORD_HASH='$2a$12$...'；否则 Compose 会做变量插值。
+# 配置透传：app 服务通过 env_file 读取 .env 的全部 BIODAYS_* 变量，
+# 只有下方 environment 里列出的镜像固定值和拼装值不可被 .env 覆盖。
+#
+# 注意：.env 中的 bcrypt 哈希等含 $ 的值经 env_file 原样传入，无需转义；
+# 但下面 environment 里出现的 ${...} 仍会被 Compose 插值。
 #
 # 镜像私有化时需先登录（访问令牌见 CNB「个人设置 / 访问令牌」）：
 #   docker login docker.cnb.cool -u cnb -p <访问令牌>
 # 公开制品库无需登录，直接 pull。
-#
-# 故事 JSON 在仓库 data/ 中，构建时生成 SQLite 并随镜像分发；仅反馈库需要持久化卷。
 
 name: biodays
 
 services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: biodays
+      # 用 hex 随机串（openssl rand -hex 24），避免 URL 特殊字符转义问题。
+      POSTGRES_PASSWORD: ${BIODAYS_POSTGRES_PASSWORD:?请在 .env 设置 BIODAYS_POSTGRES_PASSWORD}
+      POSTGRES_DB: biodays
+    volumes:
+      - biodays-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U biodays -d biodays"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   app:
     image: ${BIODAYS_IMAGE:-docker.cnb.cool/ciallo.cv/biodays:latest}
     pull_policy: ${BIODAYS_PULL_POLICY:-missing}
@@ -31,46 +49,29 @@ services:
     restart: unless-stopped
     # Go 侧优雅退出最多等 10s，launcher 再等子进程；给足停止时间，避免 worker 被强杀。
     stop_grace_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "${BIODAYS_BIND_IP:-127.0.0.1}:${BIODAYS_HTTP_PORT:-8080}:3000"
+    env_file:
+      # .env 里的 BIODAYS_* 调节项全部直达容器；environment 优先级更高。
+      - path: .env
+        required: false
     environment:
+      # 镜像内固定路径；PostgreSQL 模式下两个 SQLite 路径被忽略。
       BIODAYS_DB_PATH: /data/biodays.db
+      BIODAYS_FEEDBACK_DB_PATH: /var/lib/biodays/feedback.db
+      # 镜像内置 JSON 语料：PostgreSQL 空库首启时导入，之后不再覆盖管理员的修改。
+      BIODAYS_DATA_DIR: /stories-data
+      # 故事与反馈同库。要临时回退单容器 SQLite 模式：注释本行与 db 服务/depends_on。
+      BIODAYS_DB_DSN: postgres://biodays:${BIODAYS_POSTGRES_PASSWORD}@db:5432/biodays
       # 浏览器实际访问的 origin；确认/退订链接和管理端 Origin 校验都依赖它。
       BIODAYS_SITE_URL: ${BIODAYS_SITE_URL:-http://localhost:8080}
-      # 公开 API 的 CORS；站点自身 origin 会自动并入允许列表。
-      # 默认 * 与镜像既有行为一致；需要收紧时填逗号分隔的 origin。
+      # 同源代理内无需 CORS 覆盖；需要时在 .env 设置 BIODAYS_CORS_ORIGINS。
       BIODAYS_CORS_ORIGINS: ${BIODAYS_CORS_ORIGINS:-*}
-      BIODAYS_RATE_LIMIT: ${BIODAYS_RATE_LIMIT:-60}
-      BIODAYS_LOG_LEVEL: ${BIODAYS_LOG_LEVEL:-info}
-      BIODAYS_TRUSTED_PROXIES: ${BIODAYS_TRUSTED_PROXIES:-127.0.0.1,::1}
-      # 反馈、管理员与邮件。默认关闭，启用前先读 README 的初始化步骤。
-      BIODAYS_FEEDBACK_ENABLED: ${BIODAYS_FEEDBACK_ENABLED:-false}
-      BIODAYS_FEEDBACK_DB_PATH: /var/lib/biodays/feedback.db
-      BIODAYS_ADMIN_USERNAME: ${BIODAYS_ADMIN_USERNAME:-}
-      # 含 $，.env 中用单引号或把每个 $ 写成 $$。
-      BIODAYS_ADMIN_PASSWORD_HASH: ${BIODAYS_ADMIN_PASSWORD_HASH:-}
-      BIODAYS_ADMIN_SESSION_TTL: ${BIODAYS_ADMIN_SESSION_TTL:-8h}
-      BIODAYS_ABUSE_KEY_SECRET: ${BIODAYS_ABUSE_KEY_SECRET:-}
-      BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED: ${BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED:-true}
-      BIODAYS_FEEDBACK_SUBMIT_HOURLY: ${BIODAYS_FEEDBACK_SUBMIT_HOURLY:-5}
-      BIODAYS_FEEDBACK_SUBMIT_DAILY: ${BIODAYS_FEEDBACK_SUBMIT_DAILY:-20}
-      BIODAYS_FEEDBACK_RESEND_HOURLY: ${BIODAYS_FEEDBACK_RESEND_HOURLY:-3}
-      BIODAYS_FEEDBACK_RESEND_DAILY: ${BIODAYS_FEEDBACK_RESEND_DAILY:-10}
-      BIODAYS_SMTP_ENABLED: ${BIODAYS_SMTP_ENABLED:-false}
-      BIODAYS_SMTP_HOST: ${BIODAYS_SMTP_HOST:-}
-      BIODAYS_SMTP_PORT: ${BIODAYS_SMTP_PORT:-587}
-      BIODAYS_SMTP_TLS_MODE: ${BIODAYS_SMTP_TLS_MODE:-starttls}
-      BIODAYS_SMTP_USERNAME: ${BIODAYS_SMTP_USERNAME:-}
-      # 含 $ 的授权码同样需要单引号转义。
-      BIODAYS_SMTP_PASSWORD: ${BIODAYS_SMTP_PASSWORD:-}
-      BIODAYS_SMTP_FROM: ${BIODAYS_SMTP_FROM:-}
-      BIODAYS_FEEDBACK_NOTIFY_TO: ${BIODAYS_FEEDBACK_NOTIFY_TO:-}
-      BIODAYS_SMTP_TIMEOUT: ${BIODAYS_SMTP_TIMEOUT:-10s}
-      # Gin 运行模式。镜像里已固定 release，这里显式声明一次表达意图；
-      # 仅在需要复现调试行为时才改成 debug（会有 [GIN-debug] 警告与调试输出）。
-      GIN_MODE: ${GIN_MODE:-release}
     volumes:
-      # 反馈库独立于镜像内的 /data 故事库；重建容器不会丢失反馈。
+      # PostgreSQL 模式下不再使用；保留供回退 SQLite 模式时挂载反馈库。
       - biodays-feedback:/var/lib/biodays
     healthcheck:
       test: ["CMD", "node", "/app/healthcheck.js"]
@@ -80,4 +81,5 @@ services:
       start_period: 20s
 
 volumes:
+  biodays-pg:
   biodays-feedback:

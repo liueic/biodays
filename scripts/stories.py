@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""Audit exports, synchronize stories by ID, and generate the build manifest."""
+"""Audit exports, synchronize stories by ID, generate the build manifest,
+and publish stories to a running site via the admin API."""
 import argparse
 import datetime
 import hashlib
 import json
+import os
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
+
+BATCH_LIMIT = 200
 
 
 def read_stories(path):
@@ -74,12 +80,99 @@ def write_json(path, value):
     temporary.replace(path)
 
 
+def api_request(api, token, method, path, payload=None):
+    url = api.rstrip("/") + path
+    data = json.dumps(payload).encode() if payload is not None else None
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            body = response.read().decode()
+            return json.loads(body) if body else {}
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode(errors="replace")
+        raise ValueError(f"{method} {url} failed: HTTP {error.code}: {detail[:500]}") from error
+    except urllib.error.URLError as error:
+        raise ValueError(f"{method} {url} failed: {error.reason}") from error
+
+
+def collect_publish_entries(args):
+    """Select the stories a publish run should push: explicit --file/--id
+    selections, or the whole data/ corpus by default (or with --all)."""
+    if args.file or args.id:
+        records = {}
+        for path in args.file or []:
+            for row in read_stories(path):
+                if row["id"] in records and records[row["id"]] != row:
+                    raise ValueError(f"conflicting/duplicate ID {row['id']} in publish selection")
+                records[row["id"]] = row
+        if args.id:
+            corpus, _, _, _ = inventory(sorted(DATA.glob("stories_*.json")))
+            for identifier in args.id:
+                if identifier not in corpus:
+                    raise ValueError(f"ID {identifier!r} not found in {DATA}")
+                records[identifier] = corpus[identifier]
+        entries = [records[key] for key in sorted(records)]
+    else:
+        corpus, _, _, _ = inventory(sorted(DATA.glob("stories_*.json")))
+        entries = [corpus[key] for key in sorted(corpus)]
+    if not entries:
+        raise ValueError("nothing to publish")
+    return entries
+
+
+def require_credentials(args):
+    token = args.token or os.environ.get("BIODAYS_ADMIN_API_TOKEN", "")
+    if not args.api or not token:
+        raise ValueError("this command requires --api and --token (or the BIODAYS_ADMIN_API_TOKEN environment variable)")
+    return token
+
+
+def publish(args):
+    token = require_credentials(args)
+    entries = collect_publish_entries(args)
+    accepted = rejected = 0
+    for start in range(0, len(entries), BATCH_LIMIT):
+        chunk = entries[start:start + BATCH_LIMIT]
+        result = api_request(args.api, token, "POST", "/api/v1/admin/stories", {"stories": chunk})["data"]
+        accepted += result["accepted"]
+        rejected += result["rejected"]
+        for item in result["items"]:
+            if item.get("problems"):
+                print(f"  rejected {item.get('id')}: {'; '.join(item['problems'])}")
+    print(f"published: accepted={accepted} rejected={rejected} total={len(entries)}")
+    if rejected:
+        raise ValueError(f"{rejected} stories were rejected by the server")
+
+
+def list_remote(args):
+    token = require_credentials(args)
+    query = f"/api/v1/admin/stories?page={args.page}&page_size=50"
+    response = api_request(args.api, token, "GET", query)
+    meta, rows = response["meta"], response["data"]
+    for row in rows:
+        print(f"{row['id']:<16} {row['year']:04d}-{row['month']:02d}-{row['day']:02d}  {row['title']}")
+    print(f"page {meta['page']} of {max(1, -(-meta['total'] // meta['page_size']))}, {meta['total']} stories total")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["audit", "sync", "manifest", "check"])
+    parser.add_argument("command", choices=["audit", "sync", "manifest", "check", "publish", "list"])
     parser.add_argument("source", nargs="?", type=Path)
+    parser.add_argument("--api", help="站点地址，例如 https://biodays.example")
+    parser.add_argument("--token", help="BIODAYS_ADMIN_API_TOKEN 的值（也可用环境变量提供）")
+    parser.add_argument("--file", action="append", type=Path, help="要发布的 JSON 文件，可重复给出")
+    parser.add_argument("--id", action="append", help="只发布 data/ 中指定 ID 的故事，可重复给出")
+    parser.add_argument("--all", action="store_true", help="发布 data/ 中的全部故事（默认行为）")
+    parser.add_argument("--page", type=int, default=1, help="list 命令的页码")
     args = parser.parse_args()
-    if args.command in ("audit", "sync"):
+    if args.command == "publish":
+        publish(args)
+    elif args.command == "list":
+        list_remote(args)
+    elif args.command in ("audit", "sync"):
         source = (args.source or DATA).resolve()
         paths = [source] if source.is_file() else sorted(p for p in source.rglob("*.json") if p.name != "manifest.json")
         if not paths:

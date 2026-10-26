@@ -83,19 +83,20 @@ func NewWithClockAndDeps(cfg config.Config, st *store.Store, logger *slog.Logger
 	stories.GET("/meta", storyHandler.Meta)
 	stories.POST("/history", storyHandler.History)
 
+	allowedOrigins := append([]string{cfg.SiteURL}, cfg.CORSOrigins...)
+
 	feedbackHandler := handler.NewFeedbackHandler(deps.FeedbackService, logger)
 	feedback := v1.Group("/feedback")
 	feedback.Use(middleware.NoStore())
 	feedback.GET("/options", feedbackHandler.Options)
+	feedback.POST("/challenge", feedbackHandler.Challenge)
 	feedback.POST("/subscriptions/confirm", feedbackHandler.ConfirmSubscription)
 	feedback.POST("/subscriptions/resend", feedbackHandler.ResendConfirmation)
 	feedback.POST("/subscriptions/unsubscribe", feedbackHandler.Unsubscribe)
-	v1.POST("/feedback", middleware.NoStore(), feedbackHandler.Submit)
+	v1.POST("/feedback", middleware.NoStore(), middleware.RequirePublicOrigin(allowedOrigins), feedbackHandler.Submit)
 
 	adminHandler := handler.NewAdminHandler(deps.AdminService, deps.FeedbackService, logger, secureCookie(cfg.SiteURL))
 	mailHandler := handler.NewMailHandler(deps.FeedbackService, logger)
-
-	allowedOrigins := append([]string{cfg.SiteURL}, cfg.CORSOrigins...)
 	admin := v1.Group("/admin")
 	admin.Use(middleware.PrivateHeaders())
 	admin.Use(middleware.RequireOrigin(allowedOrigins))
@@ -117,6 +118,22 @@ func NewWithClockAndDeps(cfg config.Config, st *store.Store, logger *slog.Logger
 	writes.POST("/mail/test", mailHandler.SendTest)
 	writes.POST("/mail/outbox/:id/retry", mailHandler.Retry)
 
+	// Story management accepts either the static API token (Bearer, for
+	// scripts) or the admin cookie session (web UI); the group is mounted
+	// separately so Bearer requests are not subject to RequireOrigin.
+	storyAdminHandler := handler.NewStoryAdminHandler(
+		service.NewStoryAdminService(st, now), svc, logger)
+	storyAdmin := v1.Group("/admin/stories")
+	storyAdmin.Use(middleware.PrivateHeaders())
+	storyAdmin.Use(middleware.AdminAPIAuth(deps.AdminService, cfg.AdminAPIToken, allowedOrigins))
+	storyAdmin.GET("", storyAdminHandler.List)
+	storyAdmin.GET("/:id", storyAdminHandler.Get)
+	storyWrites := storyAdmin.Group("")
+	storyWrites.Use(middleware.RequireCSRFUnlessToken(deps.AdminService))
+	storyWrites.POST("", storyAdminHandler.Upsert)
+	storyWrites.PATCH("/:id", storyAdminHandler.Update)
+	storyWrites.DELETE("/:id", storyAdminHandler.Delete)
+
 	engine.GET("/swagger/*any", withSwaggerTheme(ginSwagger.WrapHandler(swaggerFiles.Handler)))
 	return engine, nil
 }
@@ -128,7 +145,7 @@ func secureCookie(siteURL string) bool {
 func corsConfig(origins []string) cors.Config {
 	cfg := cors.Config{
 		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "X-CSRF-Token"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "X-CSRF-Token", "Authorization"},
 		ExposeHeaders:    []string{"Cache-Control", "X-RateLimit-Limit", "Retry-After"},
 		AllowCredentials: false,
 		MaxAge:           12 * time.Hour,

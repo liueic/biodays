@@ -635,6 +635,36 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.mail-compose-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--mail-shadow);
+  background: var(--mail-info);
+}
+
+.mail-compose-verify-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.mail-compose-verify-heading .mail-compose-option-label {
+  margin-bottom: 0;
+}
+
+.mail-compose-turnstile {
+  min-height: 0;
+  overflow-wrap: anywhere;
+}
+
+.mail-compose-turnstile:not(:empty) {
+  min-height: 66px;
+}
+
 .mail-compose-status,
 .mail-inbox-status {
   display: flex;
@@ -1215,4 +1245,106 @@ button:disabled {
   .mail-message-table td {
     height: var(--mail-touch-target);
   }
+}
+
+/* ── 管理端故事管理 ─────────────────────────────────────────────── */
+/* 复用邮件布局的骨架：左侧列表 + 右侧编辑器；小屏上下堆叠。 */
+.story-admin .mail-inbox-body {
+  height: auto;
+  min-height: 420px;
+}
+
+.story-admin .mail-list-pane {
+  max-height: 440px;
+}
+
+.story-admin .mail-preview-pane {
+  display: block;
+  overflow-y: auto;
+  border-top: 1px solid var(--mail-shadow);
+  background: var(--mail-material);
+  padding: 8px;
+}
+
+@container mail-window (min-width: 920px) {
+  .story-admin .mail-inbox-body {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    height: clamp(420px, 62svh, 700px);
+  }
+
+  .story-admin .mail-list-pane {
+    border-right: 1px solid var(--mail-shadow);
+  }
+
+  .story-admin .mail-preview-pane {
+    border-top: 0;
+  }
+}
+
+.story-col-id {
+  width: 72px;
+}
+
+.story-col-date {
+  width: 92px;
+}
+
+.story-open-button {
+  width: 100%;
+  text-align: left;
+}
+
+.story-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.story-form-heading {
+  margin: 0;
+  font-size: 14px;
+}
+
+.story-form-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.story-form-field input,
+.story-form-field textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.story-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+}
+
+.story-form-fieldset {
+  display: flex;
+  margin: 0;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--mail-shadow);
+  padding: 8px;
+}
+
+.story-form-status {
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--mail-shadow);
+  background: var(--mail-info);
+  line-height: 1.5;
+}
+
+.story-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
 }

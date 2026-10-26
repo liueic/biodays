@@ -56,6 +56,8 @@ bun run format     # Biome format --write
 | `BIODAYS_SITE_URL`             | `http://localhost:3000`                    | canonical / OG / sitemap          |
 | `NEXT_PUBLIC_BIODAYS_DOCS_URL` | `http://localhost:8080/swagger/index.html` | 关于页与任务栏的 Swagger 文档链接 |
 
+反馈页的人机验证配置（PoW / Turnstile site key）由 Go 的 `GET /api/v1/feedback/options` 在运行时下发，**没有新增 `NEXT_PUBLIC_*` 变量**。Turnstile 脚本只在 `FeedbackForm` 内按需加载，不进入 `(private)` 根布局，也不会出现在 `/admin/*`；PoW 使用 `web/lib/feedback/pow-worker.ts`，Worker 不可用时回退主线程分片计算。
+
 ## 页面
 
 | 路由                          | 渲染                | 说明                                                             |

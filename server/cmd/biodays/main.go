@@ -24,6 +24,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -32,6 +33,7 @@ import (
 	"syscall"
 	"time"
 
+	"biodays/server/internal/antispam"
 	"biodays/server/internal/config"
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/router"
@@ -99,21 +101,60 @@ func loadConfigAndLogger() (config.Config, *slog.Logger) {
 
 // openStore opens the database and applies schema migrations (GORM AutoMigrate).
 func openStore(cfg config.Config, logger *slog.Logger) *store.Store {
-	st, err := store.Open(cfg.DBPath)
+	var (
+		st  *store.Store
+		err error
+	)
+	if cfg.UsingPostgres() {
+		st, err = store.OpenPostgres(cfg.DBDSN)
+	} else {
+		st, err = store.Open(cfg.DBPath)
+	}
 	if err != nil {
-		logger.Error("open database", "path", cfg.DBPath, "error", err)
+		logger.Error("open database", "postgres", cfg.UsingPostgres(), "path", cfg.DBPath, "error", err)
 		os.Exit(1)
 	}
 	return st
 }
 
+// openFeedbackStore opens the feedback store on the configured backend.
+func openFeedbackStore(cfg config.Config, logger *slog.Logger) *store.FeedbackStore {
+	var (
+		feedbackStore *store.FeedbackStore
+		err           error
+	)
+	if cfg.UsingPostgres() {
+		feedbackStore, err = store.OpenFeedbackPostgres(cfg.DBDSN)
+	} else {
+		feedbackStore, err = store.OpenFeedback(cfg.FeedbackDBPath)
+	}
+	if err != nil {
+		logger.Error("open feedback database", "postgres", cfg.UsingPostgres(), "path", cfg.FeedbackDBPath, "error", err)
+		os.Exit(1)
+	}
+	return feedbackStore
+}
+
 // autoSeed imports stories when BIODAYS_DATA_DIR points at a directory that
-// actually contains stories_*.json files. The import is an idempotent upsert,
-// so running it on every start is safe. Without a source directory, validate
+// actually contains stories_*.json files. Without a source directory, validate
 // the database bundled in the image instead.
 func autoSeed(ctx context.Context, st *store.Store, cfg config.Config, logger *slog.Logger) error {
 	if cfg.DataDir == "" {
 		return checkStoryData(ctx, st, logger)
+	}
+	// On PostgreSQL the database outlives the process and holds edits made via
+	// the admin API; importing on every start would revert them to the bundled
+	// JSON. Seed only an empty database (first boot).
+	if cfg.UsingPostgres() {
+		total, _, err := st.Stats(ctx)
+		if err != nil {
+			return fmt.Errorf("check story data: %w", err)
+		}
+		if total > 0 {
+			logger.Info("story data present; skipping first-boot import", "total", total)
+			return nil
+		}
+		logger.Info("empty story database; importing bundled JSON", "dir", cfg.DataDir)
 	}
 	files, err := filepath.Glob(filepath.Join(cfg.DataDir, "stories_*.json"))
 	if err != nil {
@@ -190,7 +231,8 @@ func serve() {
 		}
 	}()
 
-	logger.Info("biodays api listening", "addr", server.Addr, "db", cfg.DBPath, "feedback", cfg.FeedbackEnabled)
+	logger.Info("biodays api listening",
+		"addr", server.Addr, "postgres", cfg.UsingPostgres(), "db", cfg.DBPath, "feedback", cfg.FeedbackEnabled)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logger.Error("server failed", "error", err)
 		os.Exit(1)
@@ -208,11 +250,7 @@ func startFeedback(cfg config.Config, logger *slog.Logger) (router.Deps, func())
 		return router.Deps{}, func() {}
 	}
 
-	feedbackStore, err := store.OpenFeedback(cfg.FeedbackDBPath)
-	if err != nil {
-		logger.Error("open feedback database", "path", cfg.FeedbackDBPath, "error", err)
-		os.Exit(1)
-	}
+	feedbackStore := openFeedbackStore(cfg, logger)
 	secret := []byte(cfg.AbuseKeySecret)
 
 	adminService := service.NewAdminService(feedbackStore, service.AdminSettings{
@@ -224,12 +262,59 @@ func startFeedback(cfg config.Config, logger *slog.Logger) (router.Deps, func())
 		os.Exit(1)
 	}
 
+	var turnstile antispam.TurnstileVerifier
+	if cfg.TurnstileEnabled {
+		hosts := cfg.TurnstileHostnames
+		if len(hosts) == 0 {
+			if parsed, err := url.Parse(cfg.SiteURL); err == nil && parsed.Hostname() != "" {
+				hosts = []string{parsed.Hostname()}
+			}
+		}
+		turnstile = antispam.NewTurnstileClient(antispam.TurnstileConfig{
+			SecretKey: cfg.TurnstileSecretKey, Hostnames: hosts, Timeout: cfg.TurnstileTimeout,
+		})
+	}
+
+	var (
+		judge      *antispam.Judge
+		classifier antispam.Classifier
+	)
+	if cfg.SpamEnabled {
+		if cfg.AISpamEnabled {
+			client, err := antispam.NewCloudflareClassifier(antispam.CloudflareConfig{
+				AccountID: cfg.CFAccountID, APIToken: cfg.CFAPIToken,
+				Model: cfg.AISpamModel, Style: cfg.AISpamStyle, Timeout: cfg.AISpamTimeout,
+			})
+			if err != nil {
+				logger.Error("configure workers ai spam classifier", "error", err)
+				os.Exit(1)
+			}
+			classifier = client
+		}
+		judge = antispam.NewJudge(feedbackStore, secret, antispam.Settings{
+			Enabled: cfg.SpamEnabled, ReviewScore: cfg.SpamReviewScore, BlockScore: cfg.SpamBlockScore,
+			AIThreshold: cfg.AISpamThreshold, AIDailyLimit: cfg.AISpamDailyLimit,
+			AIMaxChars: cfg.AISpamMaxChars,
+		}, classifier, logger, time.Now)
+	}
+
 	feedbackService := service.NewFeedbackService(feedbackStore, service.FeedbackSettings{
 		Enabled: cfg.FeedbackEnabled, SubscriptionsEnabled: cfg.SubscriptionsEnabled,
 		SMTPEnabled: cfg.SMTPEnabled, SiteURL: cfg.SiteURL, NotifyTo: cfg.FeedbackNotifyTo,
 		SMTPMissing:  cfg.MissingSMTPConfig(),
 		SubmitHourly: cfg.SubmitHourlyLimit, SubmitDaily: cfg.SubmitDailyLimit,
 		ResendHourly: cfg.ResendHourlyLimit, ResendDaily: cfg.ResendDailyLimit,
+		ConfirmHourly: cfg.ConfirmHourlyLimit, ConfirmDaily: cfg.ConfirmDailyLimit,
+		ConfirmDailyGlobal: cfg.ConfirmDailyGlobal, AdminMailHourly: cfg.AdminMailHourlyLimit,
+		Verification: service.VerificationSettings{
+			PowEnabled: cfg.PowEnabled, PowDifficulty: cfg.PowDifficulty, PowTTL: cfg.PowTTL,
+			PowMinSeconds: cfg.PowMinSeconds, TurnstileEnabled: cfg.TurnstileEnabled,
+			TurnstileSiteKey: cfg.TurnstileSiteKey, Turnstile: turnstile,
+		},
+		Spam: service.SpamSettings{
+			Enabled: cfg.SpamEnabled, AIAssisted: cfg.AISpamEnabled, Judge: judge,
+		},
+		Logger: logger,
 	}, secret, time.Now)
 
 	deps := router.Deps{
@@ -355,14 +440,10 @@ func migrate() {
 	st := openStore(cfg, logger)
 	defer st.Close()
 	if cfg.FeedbackEnabled {
-		feedbackStore, err := store.OpenFeedback(cfg.FeedbackDBPath)
-		if err != nil {
-			logger.Error("migrate feedback database", "error", err)
-			os.Exit(1)
-		}
+		feedbackStore := openFeedbackStore(cfg, logger)
 		defer feedbackStore.Close()
 	}
-	logger.Info("schema up to date", "db", cfg.DBPath, "feedback_db", cfg.FeedbackDBPath)
+	logger.Info("schema up to date", "postgres", cfg.UsingPostgres(), "db", cfg.DBPath, "feedback_db", cfg.FeedbackDBPath)
 }
 
 func toolLogger() *slog.Logger {
@@ -382,8 +463,16 @@ func envOr(key, fallback string) string {
 
 func runCleanup() {
 	logger := toolLogger()
-	feedbackPath := envOr("BIODAYS_FEEDBACK_DB_PATH", "./feedback.db")
-	feedbackStore, err := store.OpenFeedback(feedbackPath)
+	var (
+		feedbackStore *store.FeedbackStore
+		err           error
+	)
+	if dsn := strings.TrimSpace(os.Getenv("BIODAYS_DB_DSN")); dsn != "" {
+		feedbackStore, err = store.OpenFeedbackPostgres(dsn)
+	} else {
+		feedbackPath := envOr("BIODAYS_FEEDBACK_DB_PATH", "./feedback.db")
+		feedbackStore, err = store.OpenFeedback(feedbackPath)
+	}
 	if err != nil {
 		logger.Error("open feedback database", "error", err)
 		os.Exit(1)
@@ -394,8 +483,8 @@ func runCleanup() {
 		logger.Error("cleanup failed", "error", err)
 		os.Exit(1)
 	}
-	fmt.Printf("sessions=%d confirm_tokens=%d abuse_buckets=%d sent_payloads=%d contacts=%d tokens=%d\n",
-		report.Sessions, report.ConfirmTokens, report.AbuseBuckets, report.SentOutbox,
+	fmt.Printf("sessions=%d confirm_tokens=%d abuse_buckets=%d challenges=%d sent_payloads=%d contacts=%d tokens=%d\n",
+		report.Sessions, report.ConfirmTokens, report.AbuseBuckets, report.Challenges, report.SentOutbox,
 		report.ContactScrubbed, report.TokensInvalidated)
 }
 
@@ -406,6 +495,10 @@ func runBackup(args []string) {
 	flags.Parse(args)
 	if *keepDays < 1 {
 		fmt.Fprintln(os.Stderr, "backup: --keep must be at least 1")
+		os.Exit(1)
+	}
+	if strings.TrimSpace(os.Getenv("BIODAYS_DB_DSN")) != "" {
+		fmt.Fprintln(os.Stderr, "backup: not available with BIODAYS_DB_DSN; back up the PostgreSQL database with pg_dump instead")
 		os.Exit(1)
 	}
 
@@ -461,6 +554,10 @@ func runRestore(args []string) {
 	kind := flags.String("kind", "story", "story or feedback")
 	force := flags.Bool("force", false, "replace the target if it already exists")
 	flags.Parse(args)
+	if strings.TrimSpace(os.Getenv("BIODAYS_DB_DSN")) != "" {
+		fmt.Fprintln(os.Stderr, "restore: not available with BIODAYS_DB_DSN; restore the PostgreSQL database with pg_restore instead")
+		os.Exit(1)
+	}
 	if *source == "" || *target == "" {
 		fmt.Fprintln(os.Stderr, "restore: --source and --target are required")
 		os.Exit(1)

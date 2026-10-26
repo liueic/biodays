@@ -23,13 +23,16 @@ type Report struct {
 	Version     string
 }
 
-type inputSource struct {
+// SourceInput is the citation block of a story (JSON import and admin API).
+type SourceInput struct {
 	Type     string `json:"type"`
 	Citation string `json:"citation"`
 	URL      string `json:"url"`
 }
 
-type inputStory struct {
+// StoryInput is the wire shape of a story, shared by the JSON importer and the
+// admin story API so both enforce identical rules.
+type StoryInput struct {
 	ID        string      `json:"id"`
 	Month     int         `json:"month"`
 	Day       int         `json:"day"`
@@ -40,7 +43,7 @@ type inputStory struct {
 	Summary   string      `json:"summary"`
 	Content   string      `json:"content"`
 	GeekQuote string      `json:"geek_quote"`
-	Source    inputSource `json:"source"`
+	Source    SourceInput `json:"source"`
 }
 
 func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logger) (Report, error) {
@@ -72,7 +75,7 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 			logger.Warn("seed: cannot read file", "file", file, "error", err)
 			continue
 		}
-		var entries []inputStory
+		var entries []StoryInput
 		if err := json.Unmarshal(raw, &entries); err != nil {
 			report.FailedFiles++
 			logger.Warn("seed: cannot parse file", "file", file, "error", err)
@@ -83,7 +86,7 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 			if label == "" {
 				label = fmt.Sprintf("%s[%d]", filepath.Base(file), index)
 			}
-			if problems := validate(entry); len(problems) > 0 {
+			if problems := ValidateStory(entry); len(problems) > 0 {
 				report.Skipped++
 				logger.Warn("seed: skipped invalid story", "story", label, "problems", problems)
 				continue
@@ -95,7 +98,7 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 				continue
 			}
 
-			story, tags := toModel(entry)
+			story, tags := StoryToModel(entry)
 			if err := st.Upsert(ctx, story, tags); err != nil {
 				return report, fmt.Errorf("upsert %s: %w", entry.ID, err)
 			}
@@ -119,7 +122,9 @@ func Run(ctx context.Context, st *store.Store, dataDir string, logger *slog.Logg
 	return report, nil
 }
 
-func validate(entry inputStory) []string {
+// ValidateStory reports every rule the story must satisfy. The same rules
+// apply to JSON imports and admin API submissions.
+func ValidateStory(entry StoryInput) []string {
 	var problems []string
 	if strings.TrimSpace(entry.ID) == "" {
 		problems = append(problems, "id is empty")
@@ -153,7 +158,7 @@ func validate(entry inputStory) []string {
 	return problems
 }
 
-func toModel(entry inputStory) (*model.Story, []string) {
+func StoryToModel(entry StoryInput) (*model.Story, []string) {
 	tags := make([]string, 0, len(entry.Tags))
 	seen := make(map[string]bool, len(entry.Tags))
 	for _, tag := range entry.Tags {

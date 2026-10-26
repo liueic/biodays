@@ -8,17 +8,25 @@ import { TextArea } from "@react95/core/TextArea";
 import { Mail } from "@react95/icons/Mail";
 import { Sendmail2001 } from "@react95/icons/Sendmail2001";
 import { useSearchParams } from "next/navigation";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
-
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createPowSolver,
+  type PowSolverHandle,
+  waitForMinimumSubmit,
+} from "@/lib/feedback/pow-solver";
+import { loadTurnstile } from "@/lib/feedback/turnstile";
 import {
   FeedbackApiError,
   type FeedbackKind,
   type FeedbackOptions,
   type FeedbackReceipt,
   fetchFeedbackOptions,
+  fetchPowChallenge,
   newRequestID,
+  type PowChallenge,
   resendConfirmation,
   submitFeedback,
+  type VerificationOptions,
 } from "@/lib/feedback-api";
 
 type FieldState = {
@@ -40,6 +48,61 @@ const EMPTY_FIELDS: FieldState = {
 };
 
 const KIND_ORDER: FeedbackKind[] = ["topic", "resource", "feature", "issue"];
+
+const DEFAULT_VERIFICATION: VerificationOptions = {
+  pow_enabled: false,
+  pow_difficulty: 4,
+  pow_min_seconds: 3,
+  turnstile_enabled: false,
+  ai_assisted: false,
+};
+
+const POW_RETRY_CODES = new Set([
+  "CHALLENGE_REQUIRED",
+  "CHALLENGE_INVALID",
+  "CHALLENGE_EXPIRED",
+  "CHALLENGE_CONSUMED",
+  "CHALLENGE_FAILED",
+  "CHALLENGE_TOO_FAST",
+]);
+
+type VerificationProof =
+  | { kind: "pow"; challenge: PowChallenge; nonce: string }
+  | { kind: "turnstile"; token: string }
+  | { kind: "none" };
+
+type VerificationState = {
+  status: "loading" | "solving" | "ready" | "error";
+  mode: "none" | "pow" | "turnstile";
+  proof: VerificationProof | null;
+  error: string;
+};
+
+const INITIAL_VERIFICATION_STATE: VerificationState = {
+  status: "loading",
+  mode: "none",
+  proof: null,
+  error: "",
+};
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function proofPayload(
+  proof: VerificationProof,
+): Pick<
+  Parameters<typeof submitFeedback>[0],
+  "challenge_id" | "challenge_nonce" | "turnstile_token"
+> {
+  if (proof.kind === "pow") {
+    return { challenge_id: proof.challenge.challenge_id, challenge_nonce: proof.nonce };
+  }
+  if (proof.kind === "turnstile") {
+    return { turnstile_token: proof.token };
+  }
+  return {};
+}
 
 function runeLength(value: string): number {
   return Array.from(value).length;
@@ -68,6 +131,188 @@ export function FeedbackForm() {
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<FeedbackReceipt | null>(null);
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
+  const [verificationState, setVerificationState] = useState<VerificationState>(
+    INITIAL_VERIFICATION_STATE,
+  );
+  const verificationRef = useRef<VerificationState>(INITIAL_VERIFICATION_STATE);
+  const turnstileContainer = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetId = useRef<string | null>(null);
+  const turnstileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const powHandle = useRef<PowSolverHandle | null>(null);
+  const verificationGeneration = useRef(0);
+  const inFlight = useRef(false);
+
+  const updateVerification = useCallback((next: VerificationState) => {
+    verificationRef.current = next;
+    setVerificationState(next);
+  }, []);
+
+  const cancelVerification = useCallback(() => {
+    verificationGeneration.current += 1;
+    powHandle.current?.cancel();
+    powHandle.current = null;
+    if (turnstileTimer.current) {
+      clearTimeout(turnstileTimer.current);
+      turnstileTimer.current = null;
+    }
+    const widget = typeof window === "undefined" ? undefined : window.turnstile;
+    if (turnstileWidgetId.current && widget) {
+      try {
+        widget.remove(turnstileWidgetId.current);
+      } catch {
+        // The widget may already be gone after a navigation.
+      }
+    }
+    turnstileWidgetId.current = null;
+  }, []);
+
+  const startPow = useCallback(
+    async (generation: number): Promise<VerificationProof> => {
+      updateVerification({ status: "solving", mode: "pow", proof: null, error: "" });
+      try {
+        const challenge = await fetchPowChallenge();
+        if (generation !== verificationGeneration.current) throw new Error("stale");
+        powHandle.current?.cancel();
+        const handle = createPowSolver(challenge);
+        powHandle.current = handle;
+        let nonce: string;
+        try {
+          nonce = await handle.promise;
+        } finally {
+          powHandle.current = null;
+        }
+        if (generation !== verificationGeneration.current) throw new Error("stale");
+        const proof: VerificationProof = { kind: "pow", challenge, nonce };
+        updateVerification({ status: "ready", mode: "pow", proof, error: "" });
+        return proof;
+      } catch (error) {
+        if (generation === verificationGeneration.current) {
+          updateVerification({
+            status: "error",
+            mode: "pow",
+            proof: null,
+            error: "验证计算失败，请刷新页面后重试。",
+          });
+        }
+        throw error;
+      }
+    },
+    [updateVerification],
+  );
+
+  const startTurnstile = useCallback(
+    async (config: VerificationOptions, generation: number): Promise<void> => {
+      updateVerification({ status: "loading", mode: "turnstile", proof: null, error: "" });
+      const widget = await loadTurnstile(8000);
+      if (generation !== verificationGeneration.current) return;
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const container = turnstileContainer.current;
+      if (!container) throw new Error("turnstile_container_missing");
+      const widgetId = widget.render(container, {
+        sitekey: config.turnstile_site_key ?? "",
+        theme: "light",
+        size: "flexible",
+        action: "feedback",
+        callback: (token) => {
+          if (generation !== verificationGeneration.current) return;
+          if (turnstileTimer.current) {
+            clearTimeout(turnstileTimer.current);
+            turnstileTimer.current = null;
+          }
+          updateVerification({
+            status: "ready",
+            mode: "turnstile",
+            proof: { kind: "turnstile", token },
+            error: "",
+          });
+        },
+        "expired-callback": () => {
+          if (generation !== verificationGeneration.current) return;
+          updateVerification({
+            status: "loading",
+            mode: "turnstile",
+            proof: null,
+            error: "",
+          });
+          if (widgetId) widget.reset(widgetId);
+        },
+        "error-callback": () => {
+          if (generation !== verificationGeneration.current) return;
+          updateVerification({
+            status: "error",
+            mode: "turnstile",
+            proof: null,
+            error: "人机验证未通过，请重试。",
+          });
+        },
+        "timeout-callback": () => {
+          if (generation !== verificationGeneration.current) return;
+          updateVerification({
+            status: "error",
+            mode: "turnstile",
+            proof: null,
+            error: "人机验证超时，请重试。",
+          });
+        },
+      });
+      turnstileWidgetId.current = widgetId ?? null;
+      if (turnstileTimer.current) clearTimeout(turnstileTimer.current);
+      turnstileTimer.current = setTimeout(() => {
+        if (generation !== verificationGeneration.current) return;
+        if (verificationRef.current.status === "ready") return;
+        if (config.pow_enabled) {
+          if (turnstileWidgetId.current && typeof window !== "undefined" && window.turnstile) {
+            window.turnstile.remove(turnstileWidgetId.current);
+          }
+          turnstileWidgetId.current = null;
+          void startPow(generation).catch(() => undefined);
+        } else {
+          updateVerification({
+            status: "error",
+            mode: "turnstile",
+            proof: null,
+            error: "人机验证加载超时，请刷新页面后重试。",
+          });
+        }
+      }, 10_000);
+    },
+    [startPow, updateVerification],
+  );
+
+  const setupVerification = useCallback(
+    async (config: VerificationOptions) => {
+      cancelVerification();
+      const generation = verificationGeneration.current;
+      updateVerification({ status: "loading", mode: "none", proof: null, error: "" });
+      if (config.turnstile_enabled && config.turnstile_site_key) {
+        try {
+          await startTurnstile(config, generation);
+          return;
+        } catch {
+          if (generation !== verificationGeneration.current) return;
+          if (!config.pow_enabled) {
+            updateVerification({
+              status: "error",
+              mode: "turnstile",
+              proof: null,
+              error: "人机验证加载失败，请刷新页面后重试。",
+            });
+            return;
+          }
+        }
+      }
+      if (config.pow_enabled) {
+        try {
+          await startPow(generation);
+        } catch {
+          // startPow records the visible error state.
+        }
+        return;
+      }
+      updateVerification({ status: "ready", mode: "none", proof: { kind: "none" }, error: "" });
+    },
+    [cancelVerification, startPow, startTurnstile, updateVerification],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +334,15 @@ export function FeedbackForm() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!options?.enabled) return;
+    void setupVerification(options.verification ?? DEFAULT_VERIFICATION);
+  }, [options, setupVerification]);
+
+  useEffect(() => {
+    return () => cancelVerification();
+  }, [cancelVerification]);
 
   function update<K extends keyof FieldState>(key: K, value: FieldState[K]) {
     setFields((current) => ({ ...current, [key]: value }));
@@ -127,13 +381,31 @@ export function FeedbackForm() {
     return Object.keys(next).length === 0;
   }
 
+  async function waitForProof(timeoutMs = 60_000): Promise<VerificationProof> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const current = verificationRef.current;
+      if (current.status === "ready" && current.proof) return current.proof;
+      if (current.status === "error") {
+        throw new Error(current.error || "verification_failed");
+      }
+      await sleep(100);
+    }
+    throw new Error("verification_timeout");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
     setGeneralError("");
     if (!validate()) return;
+    inFlight.current = true;
     setSubmitting(true);
+    const config = options?.verification ?? DEFAULT_VERIFICATION;
+    let proof: VerificationProof = { kind: "none" };
     try {
-      const result = await submitFeedback({
+      proof = await waitForProof();
+      const base = {
         request_id: requestID,
         kind,
         title: fields.title.trim(),
@@ -144,17 +416,65 @@ export function FeedbackForm() {
         email: fields.email.trim() || undefined,
         subscribe_updates: fields.subscribe,
         website,
-      });
-      setReceipt(result);
-      setResendState("idle");
+      };
+      for (let attempt = 0; ; attempt += 1) {
+        if (proof.kind === "pow") {
+          const expiresIn = new Date(proof.challenge.expires_at).getTime() - Date.now();
+          if (!Number.isFinite(expiresIn) || expiresIn < 30_000) {
+            proof = await startPow(verificationGeneration.current);
+          }
+          if (proof.kind === "pow") {
+            await waitForMinimumSubmit(proof.challenge);
+          }
+        }
+        try {
+          const result = await submitFeedback({ ...base, ...proofPayload(proof) });
+          setReceipt(result);
+          setResendState("idle");
+          cancelVerification();
+          return;
+        } catch (error) {
+          if (
+            attempt === 0 &&
+            proof.kind === "pow" &&
+            error instanceof FeedbackApiError &&
+            POW_RETRY_CODES.has(error.code)
+          ) {
+            proof = await startPow(verificationGeneration.current);
+            continue;
+          }
+          throw error;
+        }
+      }
     } catch (error) {
       if (error instanceof FeedbackApiError) {
         if (Object.keys(error.fields).length > 0) setErrors(error.fields);
-        setGeneralError(error.message);
+        if (error.code === "TURNSTILE_FAILED") {
+          if (turnstileWidgetId.current && typeof window !== "undefined" && window.turnstile) {
+            window.turnstile.reset(turnstileWidgetId.current);
+          }
+          updateVerification({
+            status: "loading",
+            mode: "turnstile",
+            proof: null,
+            error: "",
+          });
+          setGeneralError("人机验证未通过，请重试。");
+        } else if (error.code === "VERIFICATION_UNAVAILABLE") {
+          setGeneralError("人机验证服务暂时不可用，请稍后重试。");
+        } else if (POW_RETRY_CODES.has(error.code) || error.code === "RATE_LIMITED") {
+          setGeneralError("人机验证已过期或提交过于频繁，请刷新页面后重试。");
+          if (proof.kind === "pow" && config.pow_enabled) {
+            void startPow(verificationGeneration.current).catch(() => undefined);
+          }
+        } else {
+          setGeneralError(error.message);
+        }
       } else {
-        setGeneralError("网络异常，反馈未提交。请保留内容后重试。");
+        setGeneralError("人机验证未完成或网络异常，反馈未提交。请保留内容后重试。");
       }
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -178,6 +498,11 @@ export function FeedbackForm() {
     setGeneralError("");
     setRequestID(newRequestID());
     setResendState("idle");
+    requestAnimationFrame(() => {
+      if (options?.enabled) {
+        void setupVerification(options.verification ?? DEFAULT_VERIFICATION);
+      }
+    });
   }
 
   if (optionsError) {
@@ -227,6 +552,19 @@ export function FeedbackForm() {
   const kindOptions = options.kinds.map((item) => item.label);
   const kindLabel =
     options.kinds.find((item) => item.value === kind)?.label ?? kindOptions[0] ?? "";
+  const verificationConfig = options.verification ?? DEFAULT_VERIFICATION;
+  const verificationMessage =
+    verificationState.status === "error"
+      ? verificationState.error
+      : verificationState.status === "solving"
+        ? "正在计算验证，请稍候…"
+        : verificationState.status === "loading"
+          ? verificationState.mode === "turnstile"
+            ? "正在加载人机验证…"
+            : "正在准备验证…"
+          : verificationState.mode === "none"
+            ? "当前无需人机验证。"
+            : "验证已就绪。";
 
   return (
     <form onSubmit={handleSubmit} noValidate className="mail-compose" aria-label="写邮件到灵感信箱">
@@ -413,8 +751,29 @@ export function FeedbackForm() {
             </p>
             {errors.subscribe_updates && <FieldError>{errors.subscribe_updates}</FieldError>}
           </div>
+
+          {verificationConfig.ai_assisted && (
+            <p className="mail-compose-hint">
+              为识别可疑内容，少量投稿的去标识文本可能由境外 AI 服务辅助判断；不会发送邮箱、昵称、IP
+              或链接参数。
+            </p>
+          )}
         </div>
       </details>
+
+      <div className="mail-compose-verify">
+        <div className="mail-compose-verify-heading">
+          <span className="mail-compose-option-label">人机验证</span>
+          <span
+            role={verificationState.status === "error" ? "alert" : "status"}
+            aria-live="polite"
+            className="mail-compose-hint"
+          >
+            {verificationMessage}
+          </span>
+        </div>
+        <div ref={turnstileContainer} className="mail-compose-turnstile" />
+      </div>
 
       <div
         aria-hidden="true"
@@ -470,6 +829,7 @@ function Receipt({
   onAgain: () => void;
 }) {
   const pending = receipt.subscription_status === "pending_confirmation";
+  const deferred = receipt.confirmation_email === "deferred";
   return (
     <div className="mail-receipt">
       <div className="mail-receipt-heading">
@@ -486,10 +846,14 @@ function Receipt({
 
       {pending ? (
         <div className="mail-receipt-notice mail-receipt-copy">
-          <p>
-            请到 {email || "你填写的邮箱"}{" "}
-            确认订阅，确认前不会发送处理结果。若没有收到，可以重新发送确认邮件。
-          </p>
+          {deferred ? (
+            <p>反馈已保存，但该邮箱近期确认邮件较多，本次未发送确认邮件；可以稍后点击重发。</p>
+          ) : (
+            <p>
+              请到 {email || "你填写的邮箱"}{" "}
+              确认订阅，确认前不会发送处理结果。若没有收到，可以重新发送确认邮件。
+            </p>
+          )}
           <div className="mail-receipt-actions mt-3">
             <Button
               type="button"

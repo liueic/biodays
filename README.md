@@ -107,8 +107,10 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `BIODAYS_PORT` | `8080` | 服务监听端口 |
-| `BIODAYS_DB_PATH` | `./biodays.db` | SQLite 数据文件路径 |
-| `BIODAYS_DATA_DIR` | 必填（执行 seed 时） | 原始 `stories_*.json` 所在目录 |
+| `BIODAYS_DB_DSN` | 空 | 设为 `postgres://...` 时故事与反馈全部存入该 PostgreSQL 库；为空使用下方 SQLite 路径 |
+| `BIODAYS_DB_PATH` | `./biodays.db` | SQLite 数据文件路径（DSN 为空时生效） |
+| `BIODAYS_DATA_DIR` | 必填（执行 seed 时） | 原始 `stories_*.json` 所在目录；PostgreSQL 模式下仅在空库首启时导入 |
+| `BIODAYS_ADMIN_API_TOKEN` | 空 | 管理端故事发布的静态 Bearer Token（≥32 字节）；设置后可脚本/CI 发布，仅作用于故事接口 |
 | `BIODAYS_CORS_ORIGINS` | `http://localhost:3000` | 跨域放行源，多个以逗号分隔，支持 `*`；`BIODAYS_SITE_URL` 的 origin 会自动加入 |
 | `BIODAYS_TRUSTED_PROXIES` | 空 | 可信反向代理 IP/CIDR，多个以逗号分隔；仅对这些来源信任 `X-Forwarded-For` |
 | `BIODAYS_RATE_LIMIT` | `60` | 单 IP 每分钟限流请求数 |
@@ -129,7 +131,28 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_FEEDBACK_NOTIFY_TO` | SMTP 启用时必填 | 管理员新反馈通知与测试邮件的唯一收件地址 |
 | `BIODAYS_SMTP_TIMEOUT` | `10s` | 连接与协议读写超时 |
 | `BIODAYS_FEEDBACK_SUBMIT_HOURLY` / `_DAILY` | `5` / `20` | 每 IP 投稿频控 |
-| `BIODAYS_FEEDBACK_RESEND_HOURLY` / `_DAILY` | `3` / `10` | 每收件人确认邮件频控 |
+| `BIODAYS_FEEDBACK_RESEND_HOURLY` / `_DAILY` | `3` / `10` | 每收件人重发确认邮件频控；与首次确认共用全局日额度 |
+| `BIODAYS_FEEDBACK_CONFIRM_HOURLY` / `_DAILY` | `1` / `3` | 每收件邮箱首次确认邮件频控；重发另受 `RESEND` 限制 |
+| `BIODAYS_FEEDBACK_CONFIRM_DAILY_GLOBAL` | `100` | 全局确认邮件日上限，SMTP 配额兜底 |
+| `BIODAYS_FEEDBACK_ADMIN_MAIL_HOURLY` | `10` | 管理员逐条新反馈邮件小时上限；超出后只进后台收件箱 |
+| `BIODAYS_FEEDBACK_POW_ENABLED` | `true` | 自托管 SHA-256 工作量证明；大陆访客主验证路径 |
+| `BIODAYS_FEEDBACK_POW_DIFFICULTY` | `4` | 前导十六进制零个数，3–5 |
+| `BIODAYS_FEEDBACK_POW_TTL` | `10m` | 挑战有效期，1m–1h；绑定客户端 IP 且单次使用 |
+| `BIODAYS_FEEDBACK_POW_MIN_SECONDS` | `3` | 打开页面到允许提交的最少秒数 |
+| `BIODAYS_FEEDBACK_TURNSTILE_ENABLED` | `false` | 可选的 Turnstile；官方不支持中国大陆，默认关闭 |
+| `BIODAYS_TURNSTILE_SITE_KEY` / `_SECRET_KEY` | 启用时必填 | 公开 site key 经 options 下发；secret 仅运行时 |
+| `BIODAYS_TURNSTILE_HOSTNAMES` | 空 | 逗号分隔；为空时使用 `BIODAYS_SITE_URL` 的 host |
+| `BIODAYS_TURNSTILE_TIMEOUT` | `3s` | siteverify 超时，1–10s |
+| `BIODAYS_FEEDBACK_SPAM_ENABLED` | `true` | 规则评分与自动隔离总开关 |
+| `BIODAYS_FEEDBACK_SPAM_REVIEW_SCORE` / `_BLOCK_SCORE` | `30` / `70` | 0–29 正常、30–69 待复核、70–100 自动隔离 |
+| `BIODAYS_AI_SPAM_ENABLED` | `false` | 是否对“待复核”投稿调用 Workers AI；需要账号与令牌 |
+| `BIODAYS_CF_ACCOUNT_ID` / `BIODAYS_CF_API_TOKEN` | 空 | Workers AI 账号与仅运行时 API Token |
+| `BIODAYS_AI_SPAM_MODEL` | `@cf/cloudflare/clef-flash` | 模型 ID；切换模型只改此值 |
+| `BIODAYS_AI_SPAM_STYLE` | `decision` | `decision`（Clef 系列）或 `chat`（Qwen/GLM/Llama） |
+| `BIODAYS_AI_SPAM_TIMEOUT` | `2s` | AI 复核超时，1–10s；失败按 uncertain 放行 |
+| `BIODAYS_AI_SPAM_THRESHOLD` | `0.8` | spam/legit 置信度阈值 |
+| `BIODAYS_AI_SPAM_DAILY_LIMIT` | `500` | UTC 日窗口 AI 调用额度 |
+| `BIODAYS_AI_SPAM_MAX_CHARS` | `4000` | 发给 AI 的去标识文本上限 |
 | `GIN_MODE` | `release`（镜像内固定） | Gin 运行模式；未设置时 Gin 会退回 `debug` 并打印 `[GIN-debug]` 警告。镜像已固定为 `release`，本地开发想开调试路由日志时显式设为 `debug` |
 
 > 部署在 Nginx/Caddy 等反向代理后时，把代理地址加入 `BIODAYS_TRUSTED_PROXIES`（例如 `127.0.0.1/32,172.18.0.0/16`），限流才会按真实客户端 IP 生效。不要配置 `0.0.0.0/0`，否则 `X-Forwarded-For` 可被伪造。直连部署时保持为空即可。
@@ -212,9 +235,22 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 - 订阅是双重确认：确认前不发送结果邮件。确认令牌 24 小时有效、单次使用；重发会作废旧令牌与旧任务。确认时若已有可通知状态，只补排队一次最新结果。
 - 邮件只在管理员明确勾选“保存并通知订阅者”且状态真正变化、订阅已确认时排队；内部备注、处理中状态、垃圾信息不会触发用户邮件。退订会立即取消尚未发送的用户邮件。
 - 邮件任务状态为 `pending` / `sending` / `sent` / `failed` / `unknown` / `cancelled`。临时错误最多尝试 5 次（1、5、30、120 分钟）；永久拒收直接失败；发送阶段断链标为 `unknown`，需管理员核对后重试，避免重复邮件。`sent` 仅表示 SMTP 已接受。
-- 保留策略：已关闭反馈的邮箱与昵称 90 天后清除并撤销订阅；邮件发送成功后立即清除敏感 payload；已投递/cancelled 任务元数据保留 30 天；过期会话、确认令牌与限流桶定期清理。可用 `biodays cleanup` 手动执行。
+- 保留策略：已关闭反馈的邮箱与昵称 90 天后清除并撤销订阅；邮件发送成功后立即清除敏感 payload；已投递/cancelled 任务元数据保留 30 天；过期会话、确认令牌、限流桶与一次性挑战定期清理。可用 `biodays cleanup` 手动执行。
 - 敏感页面：`/admin/*`、确认与退订页不加载 Umami 统计或录制，设置 `X-Robots-Tag: noindex` 与 `Referrer-Policy: no-referrer`，并写入 `robots.txt` 排除规则。`/feedback` 公开可索引并加入 sitemap。
 - 请求日志不记录正文、完整邮箱、会话或订阅令牌；业务表不保存原始 IP。
+
+#### 反垃圾与人工验证
+
+公开投稿按“幂等检查 → 验证 → 频控 → 规则评分 → 可选 AI 复核 → 单事务写入”执行；同一 `request_id` 与同内容的重试直接返回原回执，不会重复消耗挑战或验证码。
+
+- **PoW 主路径**：`POST /api/v1/feedback/challenge` 签发一次性挑战，前端在 Web Worker 中计算 `SHA-256(salt + ":" + nonce)` 的前导零；挑战绑定客户端 IP、默认 10 分钟有效、至少等待 3 秒，并在写入事务内消费。大陆访客默认使用此路径。
+- **Turnstile 可选**：默认关闭；前端从 `/api/v1/feedback/options` 读取 site key，8 秒加载/就绪超时后回退 PoW。Cloudflare 官方明确不支持中国大陆，不要把 Turnstile 作为唯一入口。
+- **规则评分**：链接数量、短链、零宽/控制字符、重复正文哈希、一次性邮箱、邮箱域名短时爆发、关键词等信号累加为 0–100 分。默认 0–29 正常、30–69 待复核、70–100 自动隔离；自动隔离复用现有 `spam` 状态，不发管理员/订阅邮件，管理员可在详情页“恢复为待处理”。
+- **AI 复核**：只有“待复核”投稿才会调用 Workers AI；文本先去标识（邮箱、电话、URL 参数、零宽字符），日志只记录判定、模型、延迟与分数，不记录正文。默认模型 `@cf/cloudflare/clef-flash`（decision 请求形态）；切到 Qwen/GLM/Llama 等聊天模型时把 `BIODAYS_AI_SPAM_STYLE` 改为 `chat`。免费额度为 10,000 Neurons/天，建议先用真实样本离线评测再开启。
+- **邮件安全**：首次确认邮件按收件邮箱 1/小时、3/天，并受全局 100/天约束；管理员逐条通知 10/小时封顶。确认邮件被节流时仍在回执中明确返回 `confirmation_email=deferred`，不会假装已发送。
+- **隐私**：Turnstile 与 Workers AI 都会接触第三方；启用 AI 时页面会提示“去标识文本可能由境外 AI 服务辅助判断”，不发送邮箱、昵称、IP 或链接参数。详情见 `.env.example` 与 `docs/plans/2026-10-25-feedback-antispam-plan.md`。
+
+新增错误码：`CHALLENGE_REQUIRED`、`CHALLENGE_INVALID`、`CHALLENGE_EXPIRED`、`CHALLENGE_CONSUMED`、`CHALLENGE_FAILED`、`CHALLENGE_TOO_FAST`、`TURNSTILE_REQUIRED`、`TURNSTILE_FAILED`、`VERIFICATION_UNAVAILABLE`、`UNSUPPORTED_MEDIA_TYPE`。
 
 ---
 
@@ -286,9 +322,9 @@ bun run format             # Biome format
 
 ## 部署
 
-### 后端（CGO 单二进制 + 单文件 SQLite）
+### 后端（CGO 单二进制，SQLite 或 PostgreSQL）
 
-本项目使用 GORM 官方 SQLite 驱动（`gorm.io/driver/sqlite`，底层为 `mattn/go-sqlite3`）。编译需要本机 C 工具链：macOS 安装 Xcode Command Line Tools，Linux 安装 `gcc`。Docker 镜像内已配置好工具链，推荐用容器构建以保证可复现：
+本项目默认使用 GORM 官方 SQLite 驱动（`gorm.io/driver/sqlite`，底层为 `mattn/go-sqlite3`），设置 `BIODAYS_DB_DSN` 后切换到 PostgreSQL（`gorm.io/driver/postgres`），开发与测试无需数据库服务。编译需要本机 C 工具链：macOS 安装 Xcode Command Line Tools，Linux 安装 `gcc`。Docker 镜像内已配置好工具链，推荐用容器构建以保证可复现：
 
 ```bash
 cd server
@@ -303,9 +339,11 @@ BIODAYS_DB_PATH=./biodays.db ./biodays serve
 BIODAYS_DATA_DIR=/path/to/data BIODAYS_DB_PATH=./biodays.db ./biodays serve
 ```
 
-#### 单容器镜像（前端 + Go API + SQLite）
+#### 单容器镜像（前端 + Go API）
 
-根目录 `Dockerfile` 使用 `gcr.io/distroless/nodejs24-debian13:nonroot`。Next.js 监听 3000，Go API 在容器内部监听 8080。`data/stories_*.json` 由 Git 管理，在构建阶段通过 `biodays seed --strict` 导入 SQLite；空数据、无效 JSON、重复 ID 或被跳过的记录均令构建失败。运行镜像只携带生成的数据库，不需要 JSON 目录或数据库卷。
+根目录 `Dockerfile` 使用 `gcr.io/distroless/nodejs24-debian13:nonroot`。Next.js 监听 3000，Go API 在容器内部监听 8080。`data/stories_*.json` 由 Git 管理，在构建阶段通过 `biodays seed --strict` 导入 SQLite；空数据、无效 JSON、重复 ID 或被跳过的记录均令构建失败。运行镜像同时携带生成的 SQLite（供无 PostgreSQL 的部署直接使用）和 JSON 语料目录 `/stories-data`（供 PostgreSQL 首次启动导入）。
+
+存储支持双模式：设置 `BIODAYS_DB_DSN`（`postgres://...`）时故事与反馈全部存入同一个 PostgreSQL 数据库，`docker-compose.yml` 默认如此（附带 `postgres:17-alpine` 的 `db` 服务）；不设置 DSN 则保持单文件 SQLite。PostgreSQL 模式下 `biodays backup/restore` 文件快照不可用，改用 `pg_dump`。
 
 ```bash
 docker build --platform linux/amd64 -t biodays .
@@ -321,11 +359,21 @@ docker run -d --name biodays -p 127.0.0.1:8080:3000 \
 
 打开同一个入口即可访问：`/`（前端）、`/api/v1/*`（API）、`/swagger/index.html`（文档）、`/readyz`（健康检查）。启动会校验数据库含有故事；空库会明确报错并退出，避免健康检查通过但今日接口持续 404。
 
-更新故事时修改 `data/stories_*.json` 并刷新 `data/manifest.json`，提交后重建并重新部署镜像即可。数据库随镜像版本更新，回滚镜像也会回滚数据。API 不修改故事数据，浏览记录存储在浏览器 Cookie 中，因此默认无需持久化数据库；不要把旧的空卷继续挂到 `/data`，它会遮住镜像内数据库。
+**PostgreSQL 模式的首播与更新**：空库第一次启动时自动导入镜像内 `/stories-data` 的 JSON；之后重启不再重复导入，管理员通过 API/网页做的修改会一直保留。日常发布新故事不再需要重建镜像——见下文「持续更新故事」。
 
 #### 反馈库持久化、备份与恢复
 
-反馈、管理员会话、订阅与邮件任务保存在独立的 `/var/lib/biodays/feedback.db`。`docker-compose.yml` 已挂载命名卷 `biodays-feedback`；镜像构建时创建目录并赋予运行用户 `65532` 写权限，首次空卷初始化的属主继承自镜像目录。不要用宿主目录覆盖 `/data`（故事库随镜像更新），只持久化 `/var/lib/biodays`。
+**PostgreSQL 模式（compose 默认）**：反馈、管理员会话、订阅与邮件任务都在 `db` 服务的 `biodays-pg` 命名卷里，与应用库同库。备份与恢复使用 PostgreSQL 自身工具：
+
+```bash
+docker compose exec db pg_dump -U biodays biodays > backup.sql
+# 恢复：先停应用，再导入
+docker compose stop app
+cat backup.sql | docker compose exec -T db psql -U biodays biodays
+docker compose start app
+```
+
+**SQLite 回退模式**（未设 `BIODAYS_DB_DSN`）：反馈等数据保存在独立的 `/var/lib/biodays/feedback.db`，`biodays-feedback` 命名卷仍在 compose 中保留。此时可使用应用内文件快照：
 
 ```bash
 # 一致性备份（VACUUM INTO，包含 WAL 中已提交的数据），默认保留 7 天
@@ -334,44 +382,43 @@ biodays backup --dest /backups --keep 7
 # 恢复：先停服务，再替换目标库。restore 会撤销全部管理员会话，并把未完成邮件任务标为 unknown
 biodays restore --source /backups/20261024-120000-feedback.db \
   --target /var/lib/biodays/feedback.db --kind feedback --force
-
-# 故事库同理（kind story，不需要吊销会话）
-biodays restore --source /backups/20261024-120000-biodays.db \
-  --target /data/biodays.db --kind story --force
 ```
 
-恢复后请到 `/admin/mail` 人工核对被暂停的任务，确认没有重复投递后再重试。不要直接复制正在写入的主 DB 文件而忽略 `-wal` / `-shm`。镜像回滚时保留反馈卷；`/readyz` 在启用反馈后会同时检查故事库与反馈库，SMTP 可达性不参与 readiness，避免邮件故障导致站点反复重启。
+恢复后请到 `/admin/mail` 人工核对被暂停的任务，确认没有重复投递后再重试。不要直接复制正在写入的主 DB 文件而忽略 `-wal` / `-shm`。`/readyz` 在启用反馈后会同时检查故事库与反馈库，SMTP 可达性不参与 readiness，避免邮件故障导致站点反复重启。
 
 #### 持续更新故事
 
-`data/stories_*.json` 是唯一发布源；`data/manifest.json` 记录各文件数量、总数和 SHA-256 数据版本。不要提交 SQLite。构建时严格校验清单，再生成镜像内数据库；清单过期、数量不符、重复 ID、坏 JSON 或无效日期都会阻止发布。
+故事有两条发布路径，都不需要重建镜像：
 
-导出目录可能同时包含整季度、拆分文件和 `raw_sources/`。同步工具递归读取导出 JSON，按 ID 合并完全相同的副本；同 ID 内容不同会报出冲突文件，需选择权威文件单独同步。
+**网页编辑**：管理员登录后打开 `/admin/stories`，搜索、编辑、新建或删除故事，保存即时入库。公开页面缓存 300 秒，修改最多 5 分钟后全站生效（`/today` 与随机接口即时生效）。
+
+**命令行发布**：设置 `BIODAYS_ADMIN_API_TOKEN`（`openssl rand -hex 32`）后，用仓库脚本把 `data/` 语料或任意导出推到线上：
 
 ```bash
-# 仓库根目录：先查看新增、更新与去重数量
+# 发布整个 data/ 语料（默认）
+python3 scripts/stories.py publish --api https://your-domain.example --token "$BIODAYS_ADMIN_API_TOKEN"
+# 只发布一个导出文件，或按 ID 挑选
+python3 scripts/stories.py publish --api ... --token ... --file data/stories_q1.json
+python3 scripts/stories.py publish --api ... --token ... --id Q1-03 --id NEW-07
+# 命令行查看线上列表
+python3 scripts/stories.py list --api https://your-domain.example --token "$BIODAYS_ADMIN_API_TOKEN"
+```
+
+`publish` 按 id 幂等 upsert（存在即更新，不存在即创建），单次上限 200 篇、自动分批，服务端校验与 JSON 导入完全一致（id ≤16 字符、合法日历日期、title/content/geek_quote 非空）。
+
+`data/stories_*.json` 的角色变为「首播语料 + 备份」：镜像首启用它初始化数据库；仓库中的 `audit/sync/manifest/check` 流程保留，用于整理导出和校验一致性。需要删除线上故事时，用管理页删除或 `curl -X DELETE -H "Authorization: Bearer $TOKEN" .../api/v1/admin/stories/<id>`。
+
+管理端故事 API 的认证是双通道：脚本用 `Authorization: Bearer <BIODAYS_ADMIN_API_TOKEN>`（可免 Origin/CSRF）；网页沿用登录会话 Cookie + `X-CSRF-Token`。Token 等同发布权限，只放服务端或 CI secret。完整接口见 `/swagger/index.html` 的 admin-stories 分组。
+
+```bash
+# 仓库语料整理流程（不变）
 python3 scripts/stories.py audit /path/to/export/data
-# 更新现有 ID；新 ID 进入 data/stories_imported.json；保留导出中未出现的旧故事
 python3 scripts/stories.py sync /path/to/export/data
-# 如果是直接编辑仓库 JSON，用此命令刷新清单
 python3 scripts/stories.py manifest
 python3 scripts/stories.py check
 python3 -m unittest discover -s scripts -p 'test_*.py'
 (cd server && go test ./internal/seed)
-git diff -- data
 ```
-
-确认后提交 `data/` 并推送到 `main`，CNB 会构建和发布新镜像。保留稳定且唯一的故事 ID（不超过 16 字节）；修订同一故事沿用 ID。需要删除故事时，明确从仓库 JSON 删除并刷新清单；同步不会因某次导出不完整而自动删除旧故事。
-
-服务器更新无需挂载目录、手动导入或改数据库权限：
-
-```bash
-docker compose pull app
-docker compose up -d --force-recreate app
-curl -fsS https://your-domain.example/api/v1/meta
-```
-
-将响应的 `data.total` 与 `data.dataset_version` 对照本次提交的清单。两者一致即可确认运行的是该批数据；不一致时检查所用镜像 tag/digest，以及是否仍有旧卷遮住 `/data`。回滚镜像会同时回滚故事数据。
 
 #### 页面资源与缓存
 
@@ -399,15 +446,15 @@ Go 构建阶段使用 `golang:1.27.3-trixie`，与运行阶段的 Debian 13/glib
 
 ```bash
 cp .env.example .env
-# 设置 BIODAYS_SITE_URL；生产环境可将 BIODAYS_IMAGE 固定到版本或 digest。
+# 必填：BIODAYS_SITE_URL 与 BIODAYS_POSTGRES_PASSWORD（openssl rand -hex 24）
+# 生产环境可将 BIODAYS_IMAGE 固定到版本或 digest。
 docker compose pull
 docker compose up -d
 docker compose logs -f app
-curl http://127.0.0.1:8080/api/v1/meta  # total / dataset_version 应与 data/manifest.json 一致
 curl http://127.0.0.1:8080/api/v1/today
 ```
 
-Compose 只有一个 `app` 服务，没有数据卷或种子目录挂载。默认监听宿主机 `127.0.0.1:8080`，由 Caddy 对外提供 HTTPS；跨机器访问时可调整 `BIODAYS_BIND_IP`。已有部署替换 compose 后运行 `docker compose up -d` 即可移除旧挂载，旧命名卷不会被删除。
+Compose 包含两个服务：`db`（PostgreSQL 17，命名卷 `biodays-pg`）与 `app`；app 通过 `env_file` 读取 `.env` 的全部 `BIODAYS_*` 变量，`environment` 只保留镜像固定路径和 DSN 拼装。默认监听宿主机 `127.0.0.1:8080`，由 Caddy 对外提供 HTTPS；跨机器访问时可调整 `BIODAYS_BIND_IP`。首次启动空库会自动导入镜像内 `/stories-data` 的 408 篇语料。要回退单容器 SQLite 模式，注释掉 `BIODAYS_DB_DSN` 与 `db` 服务/`depends_on` 即可。
 
 #### Caddy 与客户端 IP
 

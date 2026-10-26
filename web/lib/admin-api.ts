@@ -26,6 +26,8 @@ export type FeedbackListItem = {
   story_id?: string;
   has_email: boolean;
   has_nickname: boolean;
+  spam_score: number;
+  spam_verdict: string;
   version: number;
   created_at: string;
   updated_at: string;
@@ -72,6 +74,14 @@ export type FeedbackDetail = {
   consented_at?: string;
   confirmed_at?: string;
   unsubscribed_at?: string;
+  spam_score: number;
+  spam_verdict: string;
+  spam_signals: string[];
+  spam_source: string;
+  spam_model: string;
+  spam_confidence: number;
+  verification_method: string;
+  verified_at?: string;
   created_at: string;
   updated_at: string;
   closed_at?: string;
@@ -102,6 +112,35 @@ export type UpdateFeedbackResult = {
   data: FeedbackDetail;
   meta: { notified: boolean; notify_skipped_note?: string };
 };
+
+export type StorySource = { type: string; citation: string; url: string };
+
+export type AdminStory = {
+  id: string;
+  month: number;
+  day: number;
+  year: number;
+  title: string;
+  lab_item: string;
+  tags: string[];
+  summary: string;
+  content: string;
+  geek_quote: string;
+  source: StorySource;
+};
+
+export type AdminStorySummary = {
+  id: string;
+  month: number;
+  day: number;
+  year: number;
+  title: string;
+  lab_item: string;
+  tags: string[];
+  summary: string;
+};
+
+export type StoryUpsertResult = { id: string; created: boolean };
 
 let csrfToken = "";
 
@@ -235,4 +274,45 @@ export async function sendTestMail(): Promise<void> {
 
 export async function retryMail(id: string): Promise<void> {
   await request(`/admin/mail/outbox/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
+export function listStories(params: {
+  q?: string;
+  tag?: string;
+  month?: number;
+  day?: number;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ data: AdminStorySummary[]; meta: PageMeta }> {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.tag) search.set("tag", params.tag);
+  if (params.month) search.set("month", String(params.month));
+  if (params.day) search.set("day", String(params.day));
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("page_size", String(params.pageSize));
+  const query = search.toString();
+  return request(`/admin/stories${query ? `?${query}` : ""}`);
+}
+
+export function getStory(id: string): Promise<{ data: AdminStory }> {
+  return request(`/admin/stories/${encodeURIComponent(id)}`);
+}
+
+export async function upsertStory(story: AdminStory): Promise<{ data: StoryUpsertResult }> {
+  return request("/admin/stories", { method: "POST", body: JSON.stringify(story) });
+}
+
+export async function patchStory(
+  id: string,
+  patch: Partial<Omit<AdminStory, "id">> & { source?: Partial<StorySource> },
+): Promise<{ data: AdminStory }> {
+  return request(`/admin/stories/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteStory(id: string): Promise<void> {
+  await request(`/admin/stories/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

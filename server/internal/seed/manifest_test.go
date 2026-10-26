@@ -39,8 +39,8 @@ func TestManifestRejectsStaleDataAndWrongCounts(t *testing.T) {
 }
 
 func TestValidateCalendarDate(t *testing.T) {
-	entry := inputStory{ID: "date", Year: 2025, Month: 2, Day: 29, Title: "title", Content: "body", GeekQuote: "quote"}
-	require.Contains(t, validate(entry), "invalid calendar date")
+	entry := StoryInput{ID: "date", Year: 2025, Month: 2, Day: 29, Title: "title", Content: "body", GeekQuote: "quote"}
+	require.Contains(t, ValidateStory(entry), "invalid calendar date")
 	entry.Year = 2024
-	require.Empty(t, validate(entry))
+	require.Empty(t, ValidateStory(entry))
 }

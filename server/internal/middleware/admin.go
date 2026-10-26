@@ -99,6 +99,37 @@ func RequireOrigin(allowed []string) gin.HandlerFunc {
 	}
 }
 
+// RequirePublicOrigin blocks browser cross-site writes to public endpoints.
+// Unlike admin writes, non-browser clients without an Origin header are allowed
+// because they still need a PoW challenge or Turnstile token.
+func RequirePublicOrigin(allowed []string) gin.HandlerFunc {
+	set := make(map[string]struct{}, len(allowed))
+	for _, origin := range allowed {
+		if strings.TrimSpace(origin) == "*" {
+			continue
+		}
+		if normalized := normalizeOrigin(origin); normalized != "" {
+			set[normalized] = struct{}{}
+		}
+	}
+	return func(c *gin.Context) {
+		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead || c.Request.Method == http.MethodOptions {
+			c.Next()
+			return
+		}
+		origin := normalizeOrigin(c.GetHeader("Origin"))
+		if origin == "" {
+			c.Next()
+			return
+		}
+		if _, ok := set[origin]; !ok {
+			abortJSON(c, http.StatusForbidden, "FORBIDDEN", "request origin is not allowed")
+			return
+		}
+		c.Next()
+	}
+}
+
 func normalizeOrigin(value string) string {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {

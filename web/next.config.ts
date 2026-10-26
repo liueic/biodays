@@ -20,6 +20,7 @@ const nextConfig: NextConfig = {
     ];
     return [
       { source: "/admin/:path*", headers: privateHeaders },
+      { source: "/feedback", headers: [{ key: "Cache-Control", value: "no-store" }] },
       { source: "/feedback/confirm", headers: privateHeaders },
       { source: "/feedback/unsubscribe", headers: privateHeaders },
     ];

@@ -225,3 +225,22 @@ func (s *Store) CleanupOrphanTags(ctx context.Context) error {
 		"DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM story_tags)",
 	).Error
 }
+
+// DeleteStory removes a story and its tag associations. It reports whether the
+// id existed; orphaned tags are left for CleanupOrphanTags.
+func (s *Store) DeleteStory(ctx context.Context, id string) (bool, error) {
+	deleted := false
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		story := model.Story{ID: id}
+		if err := tx.Model(&story).Association("Tags").Clear(); err != nil {
+			return err
+		}
+		result := tx.Delete(&model.Story{}, "id = ?", id)
+		if result.Error != nil {
+			return result.Error
+		}
+		deleted = result.RowsAffected > 0
+		return nil
+	})
+	return deleted, err
+}

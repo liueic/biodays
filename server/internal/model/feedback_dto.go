@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type FeedbackKindOption struct {
 	Value string `json:"value" example:"topic"`
@@ -16,17 +19,37 @@ type FeedbackLimits struct {
 	SourceURLMax int `json:"source_url_max" example:"2048"`
 }
 
+type VerificationOptionsDTO struct {
+	PowEnabled       bool   `json:"pow_enabled"`
+	PowDifficulty    int    `json:"pow_difficulty"`
+	PowMinSeconds    int    `json:"pow_min_seconds"`
+	TurnstileEnabled bool   `json:"turnstile_enabled"`
+	TurnstileSiteKey string `json:"turnstile_site_key,omitempty"`
+	AIAssisted       bool   `json:"ai_assisted"`
+}
+
 type FeedbackOptionsDTO struct {
-	Enabled              bool                 `json:"enabled"`
-	SubscriptionsEnabled bool                 `json:"subscriptions_enabled"`
-	Kinds                []FeedbackKindOption `json:"kinds"`
-	Limits               FeedbackLimits       `json:"limits"`
+	Enabled              bool                   `json:"enabled"`
+	SubscriptionsEnabled bool                   `json:"subscriptions_enabled"`
+	Kinds                []FeedbackKindOption   `json:"kinds"`
+	Limits               FeedbackLimits         `json:"limits"`
+	Verification         VerificationOptionsDTO `json:"verification"`
+}
+
+type ChallengeDTO struct {
+	ChallengeID      string    `json:"challenge_id"`
+	Salt             string    `json:"salt"`
+	Difficulty       int       `json:"difficulty"`
+	MinSubmitSeconds int       `json:"min_submit_seconds"`
+	IssuedAt         time.Time `json:"issued_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
 }
 
 type SubmitReceiptDTO struct {
 	ID                 string    `json:"id" example:"9f2c1d7e8a4b"`
 	Status             string    `json:"status" example:"pending"`
 	SubscriptionStatus string    `json:"subscription_status" example:"none"`
+	ConfirmationEmail  string    `json:"confirmation_email" example:"queued"`
 	CreatedAt          time.Time `json:"created_at"`
 }
 
@@ -40,6 +63,8 @@ type FeedbackListItemDTO struct {
 	StoryID            string    `json:"story_id,omitempty"`
 	HasEmail           bool      `json:"has_email"`
 	HasNickname        bool      `json:"has_nickname"`
+	SpamScore          int       `json:"spam_score"`
+	SpamVerdict        string    `json:"spam_verdict"`
 	Version            int       `json:"version"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
@@ -86,6 +111,14 @@ type FeedbackDetailDTO struct {
 	ConsentedAt        *time.Time         `json:"consented_at,omitempty"`
 	ConfirmedAt        *time.Time         `json:"confirmed_at,omitempty"`
 	UnsubscribedAt     *time.Time         `json:"unsubscribed_at,omitempty"`
+	SpamScore          int                `json:"spam_score"`
+	SpamVerdict        string             `json:"spam_verdict"`
+	SpamSignals        []string           `json:"spam_signals"`
+	SpamSource         string             `json:"spam_source"`
+	SpamModel          string             `json:"spam_model"`
+	SpamConfidence     float64            `json:"spam_confidence"`
+	VerificationMethod string             `json:"verification_method"`
+	VerifiedAt         *time.Time         `json:"verified_at,omitempty"`
 	CreatedAt          time.Time          `json:"created_at"`
 	UpdatedAt          time.Time          `json:"updated_at"`
 	ClosedAt           *time.Time         `json:"closed_at,omitempty"`
@@ -111,8 +144,23 @@ func FeedbackListItem(fb Feedback) FeedbackListItemDTO {
 		ID: fb.ID, Kind: fb.Kind, Title: fb.Title, Summary: string(summary),
 		Status: fb.Status, SubscriptionStatus: fb.SubscriptionStatus,
 		StoryID: fb.StoryID, HasEmail: fb.Email != "", HasNickname: fb.Nickname != "",
+		SpamScore: fb.SpamScore, SpamVerdict: fb.SpamVerdict,
 		Version: fb.Version, CreatedAt: fb.CreatedAt, UpdatedAt: fb.UpdatedAt,
 	}
+}
+
+func splitSignals(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return []string{}
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func FeedbackDetail(fb Feedback, events []FeedbackEvent, mail []MailOutbox) FeedbackDetailDTO {
@@ -124,6 +172,10 @@ func FeedbackDetail(fb Feedback, events []FeedbackEvent, mail []MailOutbox) Feed
 		Version: fb.Version, SubscriptionStatus: fb.SubscriptionStatus,
 		ConsentVersion: fb.ConsentVersion, ConsentedAt: fb.ConsentedAt,
 		ConfirmedAt: fb.ConfirmedAt, UnsubscribedAt: fb.UnsubscribedAt,
+		SpamScore: fb.SpamScore, SpamVerdict: fb.SpamVerdict,
+		SpamSignals: splitSignals(fb.SpamSignals), SpamSource: fb.SpamSource,
+		SpamModel: fb.SpamModel, SpamConfidence: fb.SpamConfidence,
+		VerificationMethod: fb.VerificationMethod, VerifiedAt: fb.VerifiedAt,
 		CreatedAt: fb.CreatedAt, UpdatedAt: fb.UpdatedAt, ClosedAt: fb.ClosedAt,
 		Events: make([]FeedbackEventDTO, 0, len(events)),
 		Mail:   make([]MailTaskDTO, 0, len(mail)),
