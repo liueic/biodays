@@ -1,7 +1,6 @@
 import { Bookmark } from "@react95/icons/Bookmark";
 import type { Metadata } from "next";
 
-import { StoryManager } from "@/components/admin/story-manager";
 import { Window } from "@/components/win/window";
 
 export const metadata: Metadata = {
@@ -19,7 +18,19 @@ export default function AdminStoriesPage() {
         width="wide"
       >
         <h1 className="sr-only">故事管理</h1>
-        <StoryManager />
+        <p className="reading">
+          故事通过 Markdown 和 Git 发布。修改后提交 Pull Request，预览确认后合并发布。
+        </p>
+        <p className="reading mt-4">
+          <a
+            className="text-link"
+            href="https://github.com/liueic/biodays/tree/main/web/content/stories"
+            target="_blank"
+            rel="noreferrer"
+          >
+            打开故事内容仓库
+          </a>
+        </p>
       </Window>
     </main>
   );

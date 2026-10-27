@@ -7,7 +7,7 @@ import { Window } from "@/components/win/window";
 import { getCachedArchive } from "@/lib/server-api";
 import { SITE_NAME } from "@/lib/site";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "档案",
@@ -61,7 +61,7 @@ function ArchiveOffline() {
         <h1 className="sr-only">归档</h1>
         <ErrorState
           title="归档暂时无法加载"
-          description="后端 API 没有响应，请确认服务已启动，或稍后刷新。"
+          description="内容暂时无法加载，请稍后刷新。"
           action={{ href: "/", label: "回到今日" }}
         />
       </Window>

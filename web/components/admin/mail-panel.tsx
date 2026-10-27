@@ -102,7 +102,7 @@ export function MailPanel() {
           ← 收件箱
         </Button>
         <Button as={Link} href="/admin/settings" className="px-3">
-          SMTP 设置
+          Resend 设置
         </Button>
         <Button type="button" className="px-3" onClick={() => setRefresh((value) => value + 1)}>
           刷新
@@ -118,7 +118,7 @@ export function MailPanel() {
         <Frame boxShadow="$in" padding="$3" className="text-[12px]">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <span>
-              SMTP：<strong>{status.smtp_enabled ? "已启用" : "已关闭"}</strong>
+              Resend：<strong>{status.resend_enabled ? "已启用" : "已关闭"}</strong>
             </span>
             <span>
               配置：<strong>{status.configured ? "齐全" : "不完整"}</strong>
@@ -127,13 +127,13 @@ export function MailPanel() {
               管理员收件：<strong>{status.notify_configured ? "已配置" : "未配置"}</strong>
             </span>
           </div>
-          {!status.smtp_enabled && (
+          {!status.resend_enabled && (
             <p className="mt-2 text-[#7a4b00]">
               邮件发送暂停。反馈仍可保存，管理员通知与确认任务会保留在队列中。可在
               <Link href="/admin/settings" className="underline">
                 站点设置
               </Link>
-              中启用并配置 SMTP。
+              中启用并配置 Resend。
             </p>
           )}
           {status.error && <p className="mt-2 text-[#7a0000]">发送暂停原因：{status.error}</p>}
@@ -152,7 +152,7 @@ export function MailPanel() {
               type="button"
               className="px-4"
               onClick={handleTest}
-              disabled={!status.smtp_enabled || busy}
+              disabled={!status.resend_enabled || busy}
             >
               发送测试邮件
             </Button>
@@ -225,6 +225,9 @@ export function MailPanel() {
                   <span className={`px-1 ${statusTone(task.status)}`}>
                     {MAIL_STATUS_LABELS[task.status] ?? task.status}
                   </span>
+                  {task.delivery_status && (
+                    <span className="block text-[10px]">{task.delivery_status}</span>
+                  )}
                 </td>
                 <td className="px-2 py-1">{task.attempts}</td>
                 <td className="px-2 py-1 whitespace-nowrap">
@@ -232,7 +235,7 @@ export function MailPanel() {
                 </td>
                 <td className="max-w-[18rem] px-2 py-1 break-words">{task.last_error || "—"}</td>
                 <td className="px-2 py-1">
-                  {(task.status === "failed" || task.status === "unknown") && (
+                  {task.status === "failed" && (
                     <Button
                       type="button"
                       className="px-2"
@@ -279,7 +282,7 @@ export function MailPanel() {
       </div>
 
       <Frame boxShadow="$in" padding="$3" className="text-[11px] text-[#555]">
-        已投递表示 SMTP
+        已接受发送表示 Resend
         已接受，不表示邮件已进入收件箱。状态不确定表示发送阶段断链，可能已被接受；请人工核对后再重试，避免重复邮件。
       </Frame>
     </div>

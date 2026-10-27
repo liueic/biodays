@@ -42,24 +42,25 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   return (
     <AppShell>
       {children}
-      {process.env.NODE_ENV === "production" && (
-        <>
-          <Script
-            id="umami-analytics"
-            src="https://ana.juniortree.com/script.js"
-            data-website-id="c3b4bed2-5ad6-4265-9c23-f9e462a829c4"
-            strategy="afterInteractive"
-            defer
-          />
-          <Script
-            id="umami-recorder"
-            src="https://ana.juniortree.com/recorder.js"
-            data-website-id="c3b4bed2-5ad6-4265-9c23-f9e462a829c4"
-            strategy="lazyOnload"
-            defer
-          />
-        </>
-      )}
+      {process.env.NODE_ENV === "production" &&
+        process.env.BIODAYS_DISABLE_ANALYTICS !== "true" && (
+          <>
+            <Script
+              id="umami-analytics"
+              src="https://ana.juniortree.com/script.js"
+              data-website-id="c3b4bed2-5ad6-4265-9c23-f9e462a829c4"
+              strategy="afterInteractive"
+              defer
+            />
+            <Script
+              id="umami-recorder"
+              src="https://ana.juniortree.com/recorder.js"
+              data-website-id="c3b4bed2-5ad6-4265-9c23-f9e462a829c4"
+              strategy="lazyOnload"
+              defer
+            />
+          </>
+        )}
     </AppShell>
   );
 }

@@ -19,7 +19,7 @@ export function LoginForm() {
     event.preventDefault();
     setError("");
     if (!username.trim() || !password) {
-      setError("请填写账号与密码。");
+      setError("请填写邮箱与密码。");
       return;
     }
     setSubmitting(true);
@@ -31,11 +31,11 @@ export function LoginForm() {
         if (reason.status === 429) {
           setError("尝试次数过多，请稍后再试。");
         } else if (reason.status === 401) {
-          setError("账号或密码不正确。");
+          setError("邮箱或密码不正确。");
         } else if (reason.status === 403) {
           setError("请求来源校验失败，请从本站登录页重试。");
         } else if (reason.code === "ADMIN_NOT_INITIALIZED") {
-          setError("管理员账号尚未初始化：请在服务器上运行 biodays admin set-password 后重试。");
+          setError("管理员账号尚未初始化，请运行 bun run admin:create 创建账号。");
         } else if (reason.status >= 500) {
           setError("服务器开小差了，请稍后重试。");
         } else {
@@ -51,15 +51,16 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <p className="reading">管理员使用部署配置的账号密码登录。访客提交反馈无需登录。</p>
+      <p className="reading">管理员使用预先创建的 Supabase 邮箱账号登录。访客提交反馈无需登录。</p>
       <Fieldset legend="管理员登录">
         <div className="flex flex-col gap-3">
           <div>
             <label htmlFor="admin-username" className="mb-1 block font-bold">
-              账号
+              邮箱
             </label>
             <Input
               id="admin-username"
+              type="email"
               autoComplete="username"
               autoFocus
               value={username}

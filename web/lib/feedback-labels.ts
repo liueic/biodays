@@ -34,7 +34,7 @@ export const MAIL_TYPE_LABELS: Record<string, string> = {
   admin_new_feedback: "管理员新反馈",
   subscription_confirm: "订阅确认",
   user_status_update: "处理结果",
-  smtp_test: "SMTP 测试",
+  resend_test: "Resend 测试",
   admin_digest: "管理员摘要",
 };
 
@@ -76,7 +76,7 @@ export const SPAM_SIGNAL_LABELS: Record<string, string> = {
 export const MAIL_STATUS_LABELS: Record<string, string> = {
   pending: "待发送",
   sending: "发送中",
-  sent: "已投递",
+  sent: "已接受发送",
   failed: "失败",
   unknown: "状态不确定",
   cancelled: "已取消",

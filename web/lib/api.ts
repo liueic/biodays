@@ -64,7 +64,6 @@ export class ApiError extends Error {
   }
 }
 
-const SERVER_API_ORIGIN = process.env.BIODAYS_API_URL || "http://127.0.0.1:8080";
 const DEFAULT_REVALIDATE = 300;
 
 type NextFetchInit = RequestInit & {
@@ -90,7 +89,8 @@ async function request<T>(
   headers: Record<string, string> = {},
 ): Promise<T> {
   const isServer = typeof window === "undefined";
-  const origin = isServer ? SERVER_API_ORIGIN : "";
+  // Server components use server-api.ts; this client only calls same-origin routes.
+  const origin = "";
   const init: NextFetchInit = {
     headers: { Accept: "application/json", ...headers },
   };

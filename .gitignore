@@ -11,13 +11,6 @@ Thumbs.db
 .workbuddy/
 SPEC.md
 
-# Go
-server/biodays.db*
-server/feedback.db*
-server/bin/
-backups/
-server/coverage.out
-
 # Next.js / Bun
 web/node_modules/
 web/.next/
@@ -37,7 +30,10 @@ __pycache__/
 *.swp
 *.swo
 
-# Docker Compose
+# Local environment
 .env
-/seed-data/
 .zcode/*
+web/content/index.json
+web/test-results/
+web/playwright-report/
+supabase/.temp/

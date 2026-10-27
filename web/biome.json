@@ -4,7 +4,17 @@
     "enabled": false
   },
   "files": {
-    "includes": ["**", "!**/.next", "!**/node_modules", "!**/app/fonts", "!**/next-env.d.ts"]
+    "includes": [
+      "**",
+      "!**/.next",
+      "!**/node_modules",
+      "!**/app/fonts",
+      "!**/next-env.d.ts",
+      "!**/content/stories",
+      "!**/content/index.json",
+      "!**/test-results",
+      "!**/playwright-report"
+    ]
   },
   "formatter": {
     "enabled": true,

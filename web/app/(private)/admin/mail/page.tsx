@@ -14,7 +14,7 @@ export default function AdminMailPage() {
       <Window
         title="邮件状态 - biodays"
         icon={<Mailnews3 variant="16x16_4" aria-hidden />}
-        status={["SMTP", "biodays"]}
+        status={["Resend", "biodays"]}
       >
         <MailPanel />
       </Window>

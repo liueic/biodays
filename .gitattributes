@@ -1,0 +1,2 @@
+# Preserve exact original Markdown bodies, including intentional line-end spaces.
+web/content/stories/*.md whitespace=-blank-at-eol

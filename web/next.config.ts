@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   cacheComponents: false,
   // Dev server rejects cross-origin /_next/static requests (CSRF guard).
   // The CNB cloud workspace proxies ports through https://<id>-<port>.cnb.run,

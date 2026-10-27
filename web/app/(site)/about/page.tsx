@@ -1,9 +1,8 @@
 import { Fieldset } from "@react95/core/Fieldset";
 import { HelpBook } from "@react95/icons/HelpBook";
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import { Window } from "@/components/win/window";
-import { getMeta } from "@/lib/api";
+import { getMeta } from "@/lib/server-api";
 import { DOCS_URL, SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -57,9 +56,6 @@ const ERRORS = [
 ];
 
 export default async function AboutPage() {
-  // The API starts after the image is built. Keep build-time connection failures
-  // out of the prerendered HTML; getMeta still caches successful reads for 300s.
-  await connection();
   const meta = await getMeta()
     .then((response) => response.data)
     .catch(() => null);

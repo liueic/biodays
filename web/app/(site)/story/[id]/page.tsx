@@ -11,16 +11,19 @@ import { StoryContent } from "@/components/story-content";
 import { StoryHistoryTracker } from "@/components/story-history-tracker";
 import { Tag } from "@/components/win/tag";
 import { Window } from "@/components/win/window";
-import { ApiError, getStory, type Story } from "@/lib/api";
+import { ApiError, type Story } from "@/lib/api";
 import { formatStoryDate } from "@/lib/date";
 import { SITE_NAME } from "@/lib/site";
 import { safeExternalUrl } from "@/lib/url";
 
-export const revalidate = 300;
+export const dynamicParams = false;
 
-// Generate a page on first visit, so image builds do not require a running API.
+import { stories } from "@/lib/content";
+import { getStory } from "@/lib/server-api";
+
+// All stories are built from the versioned Markdown corpus.
 export async function generateStaticParams() {
-  return [];
+  return stories.map(({ id }) => ({ id }));
 }
 
 type PageProps = { params: Promise<{ id: string }> };

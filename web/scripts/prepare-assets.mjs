@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,19 +18,10 @@ async function scan(directory) {
 for (const directory of ["app", "components", "hooks", "lib"])
   await scan(path.join(root, directory));
 const story = new Set();
-const dataDir = path.resolve(root, "../data");
-const files = (await readdir(dataDir)).filter((name) => /^stories_.*\.json$/.test(name)).sort();
-const hash = createHash("sha256");
-for (const name of files) {
-  const bytes = await readFile(path.join(dataDir, name));
-  hash.update(name).update("\0").update(bytes).update("\0");
-  for (const char of bytes.toString("utf8")) if (!ui.has(char)) story.add(char);
-}
-const manifest = JSON.parse(await readFile(path.join(dataDir, "manifest.json"), "utf8"));
-if (manifest.version !== `sha256:${hash.digest("hex")}`) {
-  throw new Error(
-    "Story manifest is stale. Run python3 scripts/stories.py manifest from the repository root.",
-  );
+const dataDir = path.join(root, "content/stories");
+for (const name of (await readdir(dataDir)).filter((name) => name.endsWith(".md"))) {
+  for (const char of await readFile(path.join(dataDir, name), "utf8"))
+    if (!ui.has(char)) story.add(char);
 }
 const source = await readFile(path.join(root, "fonts/fusion-pixel-source.woff2"));
 const output = path.join(root, "app/fonts");

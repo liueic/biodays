@@ -498,8 +498,8 @@ export function FeedbackDetailView({ id }: { id: string }) {
       </div>
 
       <Frame boxShadow="$in" padding="$3" className="text-[11px] text-[#555]">
-        邮件仅引用“给用户的处理说明”和面向用户的状态；内部备注不会进入用户输出。已投递表示 SMTP
-        已接受，不代表已进入收件箱。
+        邮件仅引用“给用户的处理说明”和面向用户的状态；内部备注不会进入用户输出。已接受发送表示
+        Resend 已接受，不代表已进入收件箱。
       </Frame>
     </div>
   );
