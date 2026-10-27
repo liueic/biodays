@@ -7,6 +7,10 @@
 3. 在 Vercel 连接 GitHub 仓库，Root Directory 设置为 `web`，Node.js 24，使用 `web/vercel.json`。本地固定 24.22.1，CI / Vercel 跟随 24.x 补丁，构建日志输出实际版本。文章修改合并后自动构建，全部故事详情和归档预生成，首页与互动接口动态运行。
 4. 分别设置 Production 和 Preview 环境变量。`BIODAYS_SITE_URL` 必须是当前部署的访问源（协议和域名）；预览应使用自己的 URL，也可以不设置此变量，由 VERCEL_URL 自动解析，以便表单同源校验与邮件链接正确。不要让预览连接生产 Supabase。
 
+首次迁移按“推送迁移分支 → GitHub Actions 通过 → Vercel Preview → 验收后合并”执行。`.github/workflows/ci.yml` 在 push、PR 和手动触发时运行内容校验、类型检查、lint、数据库升级及并发回归、业务规则、无数据库密钥构建、数据库故障隔离和桌面/手机浏览器测试。CI 使用临时本地 Supabase，不需要生产密钥，不发送真实邮件或调用模型。
+
+首次 Preview 应部署 CI 已通过的同一个提交。Vercel Git 自动部署与 GitHub Actions 默认可并行运行，连接仓库本身不构成 CI 门禁；需要严格顺序时，在 CI 成功后再触发部署。后续启用自动发布前，建议将 `verify` 设为主分支必需检查。
+
 | 变量 | 用途 |
 |---|---|
 | `BIODAYS_SITE_URL` | canonical、邮件链接与同源校验，生产使用 HTTPS |
