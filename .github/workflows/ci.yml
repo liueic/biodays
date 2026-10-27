@@ -1,0 +1,54 @@
+name: Migration regression
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.4'
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.95.4
+      - name: Install and validate content
+        working-directory: web
+        run: bun install --frozen-lockfile && bun run prepare:assets
+      - name: Types and lint
+        working-directory: web
+        run: bun run typecheck && bun run lint
+      - name: Database transactions and concurrency
+        run: python3 scripts/test-database.py
+      - name: Start isolated Supabase
+        run: supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit > /tmp/supabase.log 2>&1
+      - name: Export local test environment
+        run: python3 scripts/local-test-env.py --github
+      - name: Create local admin and test business rules
+        working-directory: web
+        run: bun run admin:create && bun run test
+      - name: Production build without database credentials
+        working-directory: web
+        run: env -u SUPABASE_URL -u SUPABASE_SECRET_KEY -u SUPABASE_PUBLISHABLE_KEY bun run build
+      - name: Reading survives database failure
+        run: python3 scripts/test-content-isolation.py
+      - name: Browser tests
+        working-directory: web
+        run: bunx playwright install --with-deps chromium && bun run test:e2e
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: browser-traces
+          path: web/test-results
+          retention-days: 3
+      - name: Stop local services
+        if: always()
+        run: supabase stop
