@@ -47,6 +47,9 @@ test("reading, archive, feedback privacy and invalid routes", async ({ page, req
 });
 
 test("public API validation and isolated service failures", async ({ request, page }) => {
+  const readiness = await request.get("/readyz");
+  expect(readiness.status()).toBe(200);
+  expect((await readiness.json()).content).toBe("ready");
   expect((await request.get("/api/v1/stories?day=2")).status()).toBe(400);
   expect((await request.get("/api/v1/today?tz=Asia%2FShanghai")).status()).toBe(400);
   expect((await request.get("/api/v1/stories?page_size=101")).status()).toBe(400);

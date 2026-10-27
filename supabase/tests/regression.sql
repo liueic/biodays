@@ -10,10 +10,21 @@ select pg_temp.assert(not has_table_privilege('anon','biodays_feedback','select'
 select pg_temp.assert(not has_table_privilege('authenticated','biodays_admins','insert'),'self-promotion denied');
 select pg_temp.assert(not has_function_privilege('anon','biodays_subscription(text,text)','execute'),'anon RPC revoked');
 select pg_temp.assert(not exists(select 1 from pg_tables where schemaname='public' and tablename like 'biodays_%' and not rowsecurity),'RLS on all business tables');
+select pg_temp.assert(not has_function_privilege('anon','biodays_submit(jsonb,text,text,jsonb,jsonb)','execute'),'updated Jev RPC retains ACL');
+
+select biodays_submit(pg_temp.feedback('jev','jev') || '{"spam_probability":0.8,"spam_model":"typesafe-ai/jev-1.14.0","spam_source":"ai"}', 'jev','jev','[]','[]');
+select pg_temp.assert((select spam_probability=0.8 and spam_confidence=0 from biodays_feedback where id='jev'),'probability saved independently from legacy confidence');
+select biodays_submit(pg_temp.feedback('ignored','jev') || '{"spam_probability":0.1}', 'jev','jev','[]','[]');
+select pg_temp.assert((select spam_probability=0.8 from biodays_feedback where id='jev'),'duplicate submission keeps original probability');
+do $$begin
+ begin perform biodays_submit(pg_temp.feedback('bad-jev','bad-jev') || '{"spam_probability":1.1}', 'bad-jev','bad-jev','[]','[]');raise exception 'Expected invalid probability';exception when check_violation then null;end;
+end$$;
+delete from biodays_feedback where id='jev';
 
 select biodays_submit(pg_temp.feedback('f1','r1'),'r1','h1',pg_temp.token('f1','confirm1'),pg_temp.mail('m1','f1','subscription_confirm','confirm:f1'));
 select biodays_submit(pg_temp.feedback('discarded','r1'),'r1','h1','[]','[]');
 select pg_temp.assert((select count(*)=1 from biodays_feedback),'same request returns same row');
+select pg_temp.assert((select spam_probability is null from biodays_feedback where id='f1'),'historical confidence is not converted to probability');
 select pg_temp.assert((select count(*)=1 from biodays_outbox),'same request does not duplicate mail');
 do $$begin
  begin perform biodays_submit(pg_temp.feedback('f2','r1'),'r1','different','[]','[]');raise exception 'Expected idempotency conflict';exception when others then if sqlerrm<>'IDEMPOTENCY_CONFLICT' then raise;end if;end;

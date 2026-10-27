@@ -1,8 +1,8 @@
 import { createHash, createHmac } from "node:crypto";
 import type { SubmitFeedbackInput } from "@/lib/feedback-api";
-import { classifierBody, parseClassifier } from "./classifier";
 import { check, db, HttpError, rpc } from "./db";
-import { decryptSecret, type Settings } from "./settings";
+import { classifyWithJev } from "./jev";
+import { decryptSecret, jevConfiguration, type Settings } from "./settings";
 import { disposableDomains, shortenerHosts, spamKeywords } from "./spam-lists";
 export const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export function clientIP(request: Request) {
@@ -145,44 +145,31 @@ export async function spamDecision(input: SubmitFeedbackInput, s: Settings) {
     spam_source: "heuristic",
     spam_model: "",
     spam_confidence: 0,
+    spam_probability: null as number | null,
     content_hash: duplicateHash,
     email_domain: domain,
   };
   if (verdict !== "review" || !s.ai_spam.enabled) return decision;
-  if (!(await rateLimit("ai", ["global"], s.ai_spam.daily_limit, s.ai_spam.daily_limit, false)))
-    return { ...decision, spam_source: "ai_budget" };
   try {
-    const response = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${s.ai_spam.account_id}/ai/run/${s.ai_spam.model}`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${decryptSecret(s.ai_spam.api_token)}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(
-          classifierBody(
-            s.ai_spam.style,
-            s.ai_spam.model,
-            redact(`${input.title}\n${input.content}`, s.ai_spam.max_chars),
-          ),
-        ),
-        signal: AbortSignal.timeout(s.ai_spam.timeout_ms),
-      },
+    if (!jevConfiguration(s.ai_spam).configured)
+      return { ...decision, spam_source: "ai_unavailable" };
+    if (!(await rateLimit("ai", ["global"], s.ai_spam.daily_limit, s.ai_spam.daily_limit, false)))
+      return { ...decision, spam_source: "ai_budget" };
+    const classified = await classifyWithJev(
+      redact(`${input.title}\n${input.content}`, s.ai_spam.max_chars),
+      s.ai_spam,
     );
-    if (!response.ok) throw new Error("AI failed");
-    const classified = parseClassifier(await response.json(), s.ai_spam.style);
     return {
       ...decision,
       spam_source: "ai",
-      spam_model: s.ai_spam.model,
-      spam_confidence: classified.confidence,
+      spam_model: classified.model,
+      spam_probability: classified.probability,
       spam_verdict:
-        classified.confidence >= s.ai_spam.threshold && classified.label !== "uncertain"
-          ? classified.label === "spam"
-            ? "spam"
-            : "allow"
-          : verdict,
+        classified.probability >= s.ai_spam.threshold
+          ? "spam"
+          : 1 - classified.probability >= s.ai_spam.threshold
+            ? "allow"
+            : verdict,
     };
   } catch {
     return { ...decision, spam_source: "ai_error" };

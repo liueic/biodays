@@ -295,10 +295,18 @@ export function FeedbackDetailView({ id }: { id: string }) {
             </dd>
             <dt>AI 模型</dt>
             <dd className="break-all">{detail.spam_model || "—"}</dd>
-            <dt>置信度</dt>
+            <dt>垃圾概率</dt>
             <dd>
-              {detail.spam_confidence > 0 ? `${Math.round(detail.spam_confidence * 100)}%` : "—"}
+              {typeof detail.spam_probability === "number"
+                ? `${Math.round(detail.spam_probability * 100)}%`
+                : "—"}
             </dd>
+            {detail.spam_probability == null && detail.spam_confidence > 0 && (
+              <>
+                <dt>历史置信度</dt>
+                <dd>{Math.round(detail.spam_confidence * 100)}%</dd>
+              </>
+            )}
             <dt>判断时间</dt>
             <dd>{formatDateTime(detail.verified_at)}</dd>
           </dl>

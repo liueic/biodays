@@ -82,6 +82,7 @@ export type FeedbackDetail = {
   spam_source: string;
   spam_model: string;
   spam_confidence: number;
+  spam_probability: number | null;
   verification_method: string;
   verified_at?: string;
   created_at: string;
@@ -256,6 +257,7 @@ export type SecretState = {
   configured: boolean;
   encrypted: boolean;
   readable: boolean;
+  source: "database" | "environment" | "none";
 };
 
 export type ResendSettings = {
@@ -281,14 +283,12 @@ export type SpamSettings = {
 
 export type AISpamSettings = {
   enabled: boolean;
-  account_id: string;
   model: string;
-  style: "decision" | "chat";
   timeout_ms: number;
   threshold: number;
   daily_limit: number;
   max_chars: number;
-  api_token: SecretState;
+  api_key: SecretState;
 };
 
 export type RateLimitSettings = {
@@ -321,7 +321,7 @@ export type TurnstilePatch = Omit<TurnstileSettings, "secret_key" | "hostnames">
   secret_key?: string;
   hostnames?: string[];
 };
-export type AISpamPatch = Omit<AISpamSettings, "api_token"> & { api_token?: string };
+export type AISpamPatch = Omit<AISpamSettings, "api_key"> & { api_key?: string };
 
 export type SettingsPatch = {
   base_revision: number;

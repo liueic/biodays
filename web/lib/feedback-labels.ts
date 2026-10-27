@@ -49,6 +49,7 @@ export const SPAM_SOURCE_LABELS: Record<string, string> = {
   ai: "AI 复核",
   ai_error: "AI 异常",
   ai_budget: "AI 预算用尽",
+  ai_unavailable: "AI 尚未配置",
 };
 
 export const VERIFICATION_METHOD_LABELS: Record<string, string> = {

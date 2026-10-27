@@ -77,29 +77,7 @@ test("origin and cron auth fail closed", () => {
   if (old) process.env.BIODAYS_SITE_URL = old;
 });
 
-test("legacy classifier decision and chat formats remain compatible", async () => {
-  const { classifierBody, parseClassifier } = await import("@/lib/backend/classifier");
-  const body = classifierBody("decision", "@cf/cloudflare/clef-flash", "redacted input");
-  expect(body).toMatchObject({ state: "redacted input", questions: { label: { type: "choice" } } });
-  expect(
-    parseClassifier(
-      { success: true, result: { answers: { label: { choice: "spam", confidence: 0.95 } } } },
-      "decision",
-    ),
-  ).toEqual({ label: "spam", confidence: 0.95 });
-  expect(
-    parseClassifier({ success: true, result: { answers: { is_spam: 0.1 } } }, "decision"),
-  ).toEqual({ label: "legit", confidence: 0.9 });
-  expect(
-    parseClassifier(
-      { success: true, result: { response: '```json\n{"label":"ham","confidence":0.9}\n```' } },
-      "chat",
-    ),
-  ).toEqual({ label: "legit", confidence: 0.9 });
-  expect(
-    parseClassifier({ success: true, result: { response: "unparseable" } }, "chat").label,
-  ).toBe("uncertain");
-  expect(() => parseClassifier({ success: false }, "decision")).toThrow();
+test("legacy shortener signals remain available to the Jev review stage", () => {
   expect(
     heuristic({ title: "科学反馈", content: "这是一篇科学反馈，参考 https://buff.ly/example" })
       .signals,

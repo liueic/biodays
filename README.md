@@ -9,7 +9,7 @@
 
 ## 本地运行
 
-需要 Node.js 24、Bun 1.4.4。仅阅读故事不需要 Supabase：
+需要 Node.js 24.22.1、Bun 1.4.4，本地版本见 `.prototools`。Vercel / CI 使用 24.x 并更新安全补丁。仅阅读故事不需要 Supabase：
 
 ```sh
 cd web

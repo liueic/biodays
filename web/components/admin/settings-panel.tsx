@@ -51,21 +51,19 @@ const groups: Record<string, { label: string; fields: Record<string, string> }> 
     fields: { enabled: "启用规则判断", review_score: "复核阈值", block_score: "垃圾阈值" },
   },
   ai_spam: {
-    label: "Workers AI（仅复核可疑内容）",
+    label: "Jev · Vercel AI Gateway（仅复核可疑内容）",
     fields: {
       enabled: "启用 AI 复核",
-      account_id: "Account ID",
-      api_token: "API Token",
+      api_key: "AI Gateway API Key",
       model: "模型",
-      style: "模式：chat 或 decision",
       timeout_ms: "超时（毫秒）",
-      threshold: "置信度阈值",
+      threshold: "垃圾概率上限（大于 0.5，最大 1）",
       daily_limit: "每日调用上限",
       max_chars: "脱敏内容最大字符数",
     },
   },
 };
-const secrets = new Set(["resend.api_key", "turnstile.secret_key", "ai_spam.api_token"]);
+const secrets = new Set(["resend.api_key", "turnstile.secret_key", "ai_spam.api_key"]);
 export function SettingsPanel() {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null),
     [draft, setDraft] = useState<Draft>({}),
@@ -137,6 +135,10 @@ export function SettingsPanel() {
       <p className="reading">
         版本 {settings.revision}。密钥留空表示保留，填写 __clear__ 表示清除。密钥不会回显。
       </p>
+      <p className="reading">
+        Jev 的垃圾概率达到上限时标记为垃圾，低于或等于 1 − 上限时判为正常，中间值保留人工审核。
+        Gateway 密钥优先使用后台设置；清除后使用服务器的 AI_GATEWAY_API_KEY（如已配置）。
+      </p>
       {!settings.encryption_key_configured && (
         <p role="status">
           保存新密钥前需配置 BIODAYS_SETTINGS_ENC_KEY。环境变量中的 Resend 密钥仍可使用。
@@ -161,7 +163,7 @@ export function SettingsPanel() {
                   ? (
                       settings[group as keyof RuntimeSettings] as unknown as Record<
                         string,
-                        { configured: boolean; readable: boolean }
+                        { configured: boolean; readable: boolean; source: string }
                       >
                     )[key]
                   : null;
@@ -169,7 +171,7 @@ export function SettingsPanel() {
                 <label key={path} className="flex flex-col gap-1 text-[12px]" htmlFor={path}>
                   {label}
                   {state
-                    ? `（${state.configured ? (state.readable ? "已配置" : "不可读取") : "未配置"}）`
+                    ? `（${state.configured ? (state.readable ? "已配置" : "不可读取") : "未配置"}${state.source === "environment" ? "，环境变量" : ""}）`
                     : ""}
                   {typeof value === "boolean" ? (
                     <input

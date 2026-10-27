@@ -201,3 +201,49 @@ test("Resend SDK verifies signed webhooks and rejects replays without duplicates
   await db.from("biodays_webhooks").delete().eq("id", id);
   await db.from("biodays_suppressions").delete().eq("email", "bounce@biodays.test");
 });
+
+test("Jev settings save privately, validate probabilities and survive a page reload", async ({
+  page,
+}) => {
+  const db = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SECRET_KEY ?? "", {
+    auth: { persistSession: false },
+  });
+  const original = await db.from("biodays_settings").select("document").eq("id", true).single();
+  expect(original.error).toBeNull();
+  try {
+    await page.goto("/admin/login");
+    await page.getByLabel("邮箱", { exact: true }).fill(process.env.BIODAYS_ADMIN_EMAIL ?? "");
+    await page.getByLabel("密码", { exact: true }).fill(process.env.BIODAYS_ADMIN_PASSWORD ?? "");
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/feedback$/);
+    await page.goto("/admin/settings");
+    await expect(page.getByLabel("模型", { exact: true })).toHaveValue("typesafe-ai/jev-1.14.0");
+    await page.getByLabel("AI Gateway API Key").fill("gateway-ui-test-key");
+    await page.getByLabel("启用 AI 复核", { exact: true }).check();
+    await page.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(page.getByRole("status")).toHaveText("设置已保存，下一次请求生效。");
+    await expect(page.getByLabel("AI Gateway API Key")).toHaveValue("");
+    const saved = await page.request.get("/api/v1/admin/settings");
+    expect(saved.status()).toBe(200);
+    const text = await saved.text();
+    expect(text).not.toMatch(/gateway-ui-test-key|v1:/);
+    expect(JSON.parse(text).data.ai_spam.api_key).toMatchObject({
+      configured: true,
+      encrypted: true,
+      readable: true,
+      source: "database",
+    });
+    await page.reload();
+    await expect(page.getByLabel("启用 AI 复核", { exact: true })).toBeChecked();
+    await expect(page.getByLabel("AI Gateway API Key")).toHaveValue("");
+    await page.getByLabel("垃圾概率上限").fill("0.5");
+    await page.getByRole("button", { name: "保存设置", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "AI 参数无效。" })).toBeVisible();
+    expect((await (await page.request.get("/api/v1/admin/settings")).json()).data.revision).toBe(
+      JSON.parse(text).data.revision,
+    );
+  } finally {
+    // This local test never submits feedback while the synthetic key is enabled.
+    await db.from("biodays_settings").update({ document: original.data?.document }).eq("id", true);
+  }
+});

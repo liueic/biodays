@@ -1,6 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { check, db, HttpError, rpc } from "./db";
 
+export const JEV_MODEL = "typesafe-ai/jev-1.14.0";
+export const isJevModel = (value: unknown): value is string =>
+  typeof value === "string" && /^typesafe-ai\/jev(?:-\d+\.\d+\.\d+)?$/.test(value);
+
 export const defaults = () => ({
   subscriptions_enabled: true,
   resend: {
@@ -29,14 +33,12 @@ export const defaults = () => ({
   spam: { enabled: true, review_score: 30, block_score: 70 },
   ai_spam: {
     enabled: false,
-    account_id: "",
-    model: "@cf/cloudflare/clef-flash",
-    style: "decision",
+    model: JEV_MODEL,
     timeout_ms: 5000,
     threshold: 0.8,
     daily_limit: 500,
     max_chars: 4000,
-    api_token: "",
+    api_key: "",
   },
 });
 export type Settings = ReturnType<typeof defaults>;
@@ -46,7 +48,39 @@ export type SettingsRow = {
   updated_at: string;
   updated_by: string;
 };
-const secretPaths = ["resend.api_key", "turnstile.secret_key", "ai_spam.api_token"] as const;
+const secretPaths = ["resend.api_key", "turnstile.secret_key", "ai_spam.api_key"] as const;
+
+// Read old JSON settings without mutating the row or bypassing revision/CAS checks.
+// Only known fields survive; in particular, legacy Cloudflare credentials never
+// appear in the admin response and are never forwarded to AI Gateway.
+export function normalizeSettings(document: Record<string, unknown>): Settings {
+  const normalized = defaults();
+  for (const group of Object.keys(normalized) as (keyof Settings)[]) {
+    if (group === "subscriptions_enabled") {
+      if (typeof document[group] === "boolean") normalized[group] = document[group];
+      continue;
+    }
+    const raw = document[group];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const source = raw as Record<string, unknown>;
+    const target = normalized[group] as Record<string, unknown>;
+    const legacy =
+      group === "ai_spam" &&
+      (!isJevModel(source.model) ||
+        Object.hasOwn(source, "account_id") ||
+        Object.hasOwn(source, "api_token") ||
+        Object.hasOwn(source, "style"));
+    for (const key of Object.keys(target)) {
+      if (legacy && !["timeout_ms", "threshold", "daily_limit", "max_chars"].includes(key))
+        continue;
+      if (typeof source[key] === typeof target[key]) target[key] = source[key];
+    }
+  }
+  // Old confidence thresholds could include values that overlap Boolean bands.
+  if (normalized.ai_spam.threshold <= 0.5 || normalized.ai_spam.threshold > 1)
+    normalized.ai_spam.threshold = 0.8;
+  return normalized;
+}
 function encryptionKey() {
   const value = process.env.BIODAYS_SETTINGS_ENC_KEY ?? "";
   const key = /^[a-f\d]{64}$/i.test(value)
@@ -92,24 +126,39 @@ export async function settings(): Promise<SettingsRow> {
     result = await client.from("biodays_settings").select("*").eq("id", true).single();
     check(result.error);
   }
-  return result.data as SettingsRow;
+  const row = result.data as SettingsRow;
+  return { ...row, document: normalizeSettings(row.document) };
 }
-function secretState(value: string) {
+function secretState(value: string, environment?: string) {
   let readable = false;
   try {
-    readable = !!decryptSecret(value);
+    readable = !!(decryptSecret(value) || (environment && process.env[environment]));
   } catch {
     /* Report state without leaking credentials. */
   }
-  return { configured: !!value, encrypted: value.startsWith("v1:"), readable };
+  return {
+    configured: !!value || !!(environment && process.env[environment]),
+    encrypted: value.startsWith("v1:"),
+    readable,
+    source: value
+      ? value.startsWith("env:")
+        ? "environment"
+        : "database"
+      : environment && process.env[environment]
+        ? "environment"
+        : "none",
+  };
 }
 export function publicSettings(row: SettingsRow) {
-  const document = structuredClone(row.document);
+  const document = normalizeSettings(row.document);
   const result: Record<string, unknown> = { ...document };
   for (const path of secretPaths) {
     const [group, key] = path.split(".");
     const section = { ...(result[group] as Record<string, unknown>) };
-    section[key] = secretState(section[key] as string);
+    section[key] = secretState(
+      section[key] as string,
+      path === "ai_spam.api_key" ? "AI_GATEWAY_API_KEY" : undefined,
+    );
     result[group] = section;
   }
   let configured = false;
@@ -125,6 +174,15 @@ export function publicSettings(row: SettingsRow) {
     encryption_key_configured: configured,
     clear_sentinel: "__clear__",
   };
+}
+export function jevConfiguration(config: Settings["ai_spam"]) {
+  let apiKey = "";
+  try {
+    apiKey = decryptSecret(config.api_key) || process.env.AI_GATEWAY_API_KEY || "";
+  } catch {
+    // Do not fall back to a different account when a saved key is unreadable.
+  }
+  return { apiKey, configured: !!apiKey && isJevModel(config.model) };
 }
 export function mailConfiguration(s: Settings) {
   let apiKey = "",
@@ -215,7 +273,7 @@ export async function saveSettings(input: Record<string, unknown>, actor: string
     invalid("请完整配置 Turnstile 与允许的主机名。");
   if (
     !Number.isFinite(next.ai_spam.threshold) ||
-    next.ai_spam.threshold < 0 ||
+    next.ai_spam.threshold <= 0.5 ||
     next.ai_spam.threshold > 1 ||
     !Number.isInteger(next.ai_spam.daily_limit) ||
     next.ai_spam.daily_limit < 1 ||
@@ -225,14 +283,9 @@ export async function saveSettings(input: Record<string, unknown>, actor: string
     next.ai_spam.max_chars > 5000
   )
     invalid("AI 参数无效。");
-  if (!["chat", "decision"].includes(next.ai_spam.style)) invalid("AI 模式无效。");
-  if (
-    next.ai_spam.enabled &&
-    (!/^[a-f\d]{32}$/i.test(next.ai_spam.account_id) ||
-      !next.ai_spam.model.startsWith("@cf/") ||
-      !decryptSecret(next.ai_spam.api_token))
-  )
-    invalid("请完整配置 Workers AI。");
+  if (!isJevModel(next.ai_spam.model)) invalid("请选择 typesafe-ai/jev 或固定版本的 Jev 模型。");
+  if (next.ai_spam.enabled && (!next.spam.enabled || !jevConfiguration(next.ai_spam).configured))
+    invalid("请启用垃圾信息规则，并配置可读取的 AI Gateway 密钥。");
   if (next.resend.enabled && !mailConfiguration(next).configured) invalid("请完整配置 Resend。");
   const changes: Record<string, unknown> = {};
   const before = publicSettings(row),

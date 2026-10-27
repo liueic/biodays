@@ -22,7 +22,13 @@ try:
     def sql(source):
         return run("docker", "exec", "-i", container, "psql", "-U", "postgres", "-v", "ON_ERROR_STOP=1", input=source, capture_output=True).stdout
     sql("create role anon; create role authenticated; create role service_role bypassrls; create schema auth; create table auth.users(id uuid primary key);")
-    sql((root / "supabase/migrations/202610270001_biodays.sql").read_text())
+    migrations = sorted((root / "supabase/migrations").glob("*.sql"))
+    sql(migrations[0].read_text())
+    sql("insert into biodays_feedback(id,request_id,request_body_hash,kind,title,content,spam_confidence) values('pre-jev','pre-jev','legacy','issue','旧反馈','这是迁移前已经保存的一条旧反馈内容。',0.95);")
+    for migration in migrations[1:]:
+        sql(migration.read_text())
+    assert sql("select spam_probability is null and spam_confidence=0.95::real from biodays_feedback where id='pre-jev';").splitlines()[2].strip() == "t"
+    sql("delete from biodays_feedback where id='pre-jev';")
     sql((root / "supabase/tests/regression.sql").read_text())
     # Concurrent saves from different instances must not both succeed.
     sql("insert into biodays_settings(id,document) values(true,'{}');")
@@ -33,6 +39,6 @@ try:
         results = list(executor.map(save, ["admin-a", "admin-b"]))
     assert sorted(results) == [0, 3], results
     assert sql("select revision from biodays_settings;").splitlines()[2].strip() == "1"
-    print("Database regressions and concurrent settings CAS passed")
+    print("Database upgrade, regressions and concurrent settings CAS passed")
 finally:
     subprocess.run(["docker", "stop", container], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

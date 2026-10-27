@@ -20,6 +20,7 @@ env = {
     "SUPABASE_SECRET_KEY": status["SERVICE_ROLE_KEY"],
     "BIODAYS_SITE_URL": "http://localhost:13000",
     "BIODAYS_CRON_SECRET": "local-test-cron-secret",
+    "BIODAYS_SETTINGS_ENC_KEY": base64.b64encode(bytes([7]) * 32).decode(),
     "RESEND_WEBHOOK_SECRET": "whsec_" + base64.b64encode(b"local-webhook-secret-32-bytes-0000").decode(),
     "BIODAYS_ADMIN_EMAIL": "admin@biodays.test",
     "BIODAYS_ADMIN_PASSWORD": "LocalTestPassword12345!",

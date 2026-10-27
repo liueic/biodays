@@ -2,9 +2,9 @@
 
 ## 环境与发布
 
-1. 在 Supabase 创建生产项目，以及独立的预览/测试项目。先在测试项目执行 `supabase/migrations/202610270001_biodays.sql`。该迁移仅管理 `biodays_` 前缀对象。
+1. 在 Supabase 创建生产项目，以及独立的预览/测试项目。先在测试项目按文件名顺序执行 `supabase/migrations/*.sql`；已有项目只应用尚未执行的迁移。迁移仅管理 `biodays_` 前缀对象。
 2. Supabase Auth 开启 Email 密码登录，关闭全局新用户注册。不要关闭 Email provider，否则预先创建的管理员也无法登录。本地 `config.toml` 的 `auth.enable_signup=false` 与 `auth.email.enable_signup=true` 正是这一区别。
-3. 在 Vercel 连接 GitHub 仓库，Root Directory 设置为 `web`，Node.js 24，使用 `web/vercel.json`。文章修改合并后自动构建，全部故事详情和归档预生成，首页与互动接口动态运行。
+3. 在 Vercel 连接 GitHub 仓库，Root Directory 设置为 `web`，Node.js 24，使用 `web/vercel.json`。本地固定 24.22.1，CI / Vercel 跟随 24.x 补丁，构建日志输出实际版本。文章修改合并后自动构建，全部故事详情和归档预生成，首页与互动接口动态运行。
 4. 分别设置 Production 和 Preview 环境变量。`BIODAYS_SITE_URL` 必须是当前部署的访问源（协议和域名）；预览应使用自己的 URL，也可以不设置此变量，由 VERCEL_URL 自动解析，以便表单同源校验与邮件链接正确。不要让预览连接生产 Supabase。
 
 | 变量 | 用途 |
@@ -21,10 +21,38 @@
 | `RESEND_FROM` | 已验证域名的发件地址，如 `Biodays <hello@example.com>` |
 | `BIODAYS_NOTIFY_TO` | 管理员新反馈与测试邮件收件地址 |
 | `BIODAYS_MAIL_ALLOWLIST` | 测试收件地址白名单，逗号分隔；预览未设置时拒绝发送 |
+| `AI_GATEWAY_API_KEY` | Jev 服务端调用的备用密钥，后台未保存密钥时使用；不会自动启用 AI |
 
 环境变量中的邮件参数只用于**首次创建**运行设置。已有设置以数据库为准，后续在 `/admin/settings` 修改，下一次相关请求生效。环境引用 `RESEND_API_KEY` 在服务端读取；后台写入新密钥需要有效的加密主密钥。清除密钥填写 `__clear__`，空值表示保留。加密主密钥丢失会使后台保存的密钥不可读取，需要重新配置；备份时单独保管。
 
 在本地可信终端配置生产项目的服务端变量，通过 `BIODAYS_ADMIN_EMAIL`、`BIODAYS_ADMIN_PASSWORD` 执行 `cd web && bun run admin:create`。脚本不会输出密码。创建后移除密码变量。已有 Supabase 用户的 UUID 可由 SQL editor 加入 `biodays_admins`；用户 metadata 不授予权限。
+
+## Jev 与可疑反馈复核
+
+官方 `ai@7.0.154` 和 `zod@4.6.7` 已固定版本，使用 `experimental_decide` + `createGateway().decisionModel()`；实验接口可能在补丁版本变化，升级需重跑 SDK 合约测试。默认模型固定 `typesafe-ai/jev-1.14.0`，后台也允许 `typesafe-ai/jev` 或明确的 Jev 版本。固定版本可避免别名升级带来的判断变化。
+
+先应用 `202610270002_jev.sql`，再部署新应用。它新增可空的 `spam_probability`，保留原置信度及其他数据。旧应用可以忽略新列；新应用的 `/readyz` 会检查该列是否存在。旧 Cloudflare AI 设置在新应用读取时兼容转换为关闭的 Jev 设置，保留合法的限额及超时；读取不写库、不递增版本，下一次管理员保存通过原有 CAS 和审计写入新格式。旧账号、模式与 token 不会回显或传给 Gateway。
+
+在 Vercel AI Gateway 创建密钥并配置 `AI_GATEWAY_API_KEY`，或在后台加密保存密钥。后台密钥优先，清除后使用环境变量；已保存但不可读取的密钥不会静默切换账号。后台显示实际来源。后台设置下次请求生效，Vercel 环境变量变更需要重新部署。即使环境有 OIDC token，也只有显式配置 Gateway 密钥且打开后台开关后才会调用模型。
+
+在 `/admin/settings` 启用规则判断与 Jev 复核。先测试再启用，默认仍关闭。模型只接收脱敏并截断的标题与正文，不接收访客 IP、昵称、邮箱字段或站点密钥。SDK 遥测未启用。发送到外部模型的内容仍可能包含无法自动识别的个人信息，因此只提交必要文字。
+
+规则先判断：正常内容和明确垃圾不调用模型，只有可疑内容交给 Jev。默认每自然日（UTC）最多 500 次，最多 4000 个字符，超时 5 秒。应用侧关闭 SDK 重试；调用失败也计入限额。缺失密钥、超时、供应商错误、拒答、非法响应或预算耗尽时，保留留言进入人工审核。模型失败不影响公开故事阅读，也不导致有效留言丢失。
+
+Boolean 答案是 P(垃圾)，与历史置信度独立保存。初始概率 ≥0.8 标垃圾，≤0.2 判正常，中间值待复核；阈值必须大于 0.5 且不大于 1。后台同时显示模型与垃圾概率；旧数据只显示历史置信度，不自动转换。上线前用带人工标签的中文反馈测试误判与漏判，再调整阈值。SDK 合约和本地业务测试使用模拟 Gateway 网络响应，不能代替真实模型准确率评估。
+
+回滚到 Jev 接入前的应用时，先关闭 AI，并将 `ai_spam` 恢复成旧应用所需的字段形态，再回滚代码。可通过 Supabase SQL editor 执行以下带版本和审计的修改（保留其他设置；旧 AI 保持关闭）：
+
+```sql
+select public.biodays_save_settings(
+  revision,
+  jsonb_set(document, '{ai_spam}', '{"enabled":false,"account_id":"","model":"@cf/cloudflare/clef-flash","style":"decision","timeout_ms":5000,"threshold":0.8,"daily_limit":500,"max_chars":4000,"api_token":""}'::jsonb),
+  'jev-rollback',
+  '{"ai_spam":"disabled for pre-Jev application rollback"}'
+) from public.biodays_settings where id;
+```
+
+新增概率列可以保留，避免删除已记录的判断。若回滚时有并发保存导致版本冲突，刷新当前设置后重试。
 
 ## Resend 与队列
 
