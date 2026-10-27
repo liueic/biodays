@@ -3,7 +3,6 @@ import { heuristic, redact } from "@/lib/backend/abuse";
 import { requireBearer, sameOrigin } from "@/lib/backend/auth";
 import { normalizeSubmission, submissionHash } from "@/lib/backend/feedback";
 import { failureStatus, message } from "@/lib/backend/mail";
-import { decryptSecret, defaults, encryptSecret, publicSettings } from "@/lib/backend/settings";
 
 const input = {
   request_id: "test-request-id-0001",
@@ -27,20 +26,6 @@ test("submission validation and canonical idempotency", () => {
     { kind: "toString" },
   ])
     expect(() => normalizeSubmission({ ...input, ...patch })).toThrow();
-});
-test("secrets encrypted, tampering rejected and admin view redacted", () => {
-  process.env.BIODAYS_SETTINGS_ENC_KEY = Buffer.alloc(32, 7).toString("base64");
-  const secret = encryptSecret("re_example"),
-    doc = defaults();
-  doc.resend.api_key = secret;
-  expect(secret).not.toContain("re_example");
-  expect(decryptSecret(secret)).toBe("re_example");
-  expect(() => decryptSecret(`${secret.slice(0, -4)}AAAA`)).toThrow();
-  expect(
-    JSON.stringify(
-      publicSettings({ revision: 1, document: doc, updated_at: "", updated_by: "test" }),
-    ),
-  ).not.toContain(secret);
 });
 test("HTML escapes input and uncertain delivery cannot silently retry", () => {
   expect(

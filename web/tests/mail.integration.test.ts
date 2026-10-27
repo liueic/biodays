@@ -9,12 +9,11 @@ test.skipIf(!local)(
   async () => {
     const old = await settings();
     const doc = defaults();
-    doc.resend = {
-      enabled: true,
-      api_key: "env:RESEND_API_KEY",
-      from: "sender@biodays.test",
-      notify_to: "admin@biodays.test",
-    };
+    doc.resend.enabled = true;
+    const oldFrom = process.env.RESEND_FROM,
+      oldNotify = process.env.BIODAYS_NOTIFY_TO;
+    process.env.RESEND_FROM = "sender@biodays.test";
+    process.env.BIODAYS_NOTIFY_TO = "admin@biodays.test";
     const oldKey = process.env.RESEND_API_KEY;
     process.env.RESEND_API_KEY = "re_local_test";
     await db().from("biodays_settings").update({ document: doc }).eq("id", true);
@@ -53,7 +52,7 @@ test.skipIf(!local)(
         (await db().from("biodays_outbox").select("status").eq("id", task.id).single()).data
           ?.status,
       ).toBe("pending");
-      doc.resend.from = "changed@biodays.test";
+      process.env.RESEND_FROM = "changed@biodays.test";
       await db().from("biodays_settings").update({ document: doc }).eq("id", true);
       await db()
         .from("biodays_outbox")
@@ -118,6 +117,10 @@ test.skipIf(!local)(
       globalThis.fetch = originalFetch;
       await db().from("biodays_outbox").delete().neq("id", "");
       await db().from("biodays_settings").update({ document: old.document }).eq("id", true);
+      if (oldFrom === undefined) delete process.env.RESEND_FROM;
+      else process.env.RESEND_FROM = oldFrom;
+      if (oldNotify === undefined) delete process.env.BIODAYS_NOTIFY_TO;
+      else process.env.BIODAYS_NOTIFY_TO = oldNotify;
       if (oldKey) process.env.RESEND_API_KEY = oldKey;
       else delete process.env.RESEND_API_KEY;
     }

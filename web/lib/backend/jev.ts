@@ -10,7 +10,7 @@ export async function classifyWithJev(
 ) {
   const { apiKey, configured } = jevConfiguration(config);
   if (!configured) throw new Error("Jev is not configured");
-  // Create a client for this request so key/model changes take effect immediately.
+  // Use the deployed environment key and current runtime model for each request.
   // Bun adds fetch.preconnect to ambient types; Gateway uses only the callable API.
   const gateway = createGateway({ apiKey, fetch: fetcher as typeof fetch });
   const result = await decide({

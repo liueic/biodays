@@ -3,7 +3,6 @@ import { check, db, newID } from "@/lib/backend/db";
 import { submit } from "@/lib/backend/feedback";
 import {
   defaults,
-  encryptSecret,
   JEV_MODEL,
   publicSettings,
   saveSettings,
@@ -17,16 +16,12 @@ test.skipIf(!local)(
   async () => {
     const old = await settings();
     const oldKey = process.env.AI_GATEWAY_API_KEY;
-    const oldEncryptionKey = process.env.BIODAYS_SETTINGS_ENC_KEY;
-    process.env.BIODAYS_SETTINGS_ENC_KEY = Buffer.alloc(32, 7).toString("base64");
-    delete process.env.AI_GATEWAY_API_KEY;
+    process.env.AI_GATEWAY_API_KEY = "gateway-first-key";
     const document = defaults();
     document.resend.enabled = false;
-    document.resend.notify_to = "";
     document.ai_spam = {
       ...document.ai_spam,
       enabled: true,
-      api_key: encryptSecret("gateway-first-key"),
     };
     check((await db().from("biodays_settings").update({ document }).eq("id", true)).error);
     check((await db().from("biodays_abuse").delete().neq("key_hash", "")).error);
@@ -116,10 +111,12 @@ test.skipIf(!local)(
       await saveSettings(
         {
           base_revision: current.revision,
-          ai_spam: { model: "typesafe-ai/jev", api_key: "gateway-rotated-key", threshold: 0.95 },
+          ai_spam: { model: "typesafe-ai/jev", threshold: 0.95 },
         },
         "jev-hot-reload-test",
       );
+      // Simulate a newly deployed environment; business edits never store this key.
+      process.env.AI_GATEWAY_API_KEY = "gateway-rotated-key";
       probability = 0.9;
       expect(await send()).toMatchObject({ spam_verdict: "review", spam_model: "typesafe-ai/jev" });
       expect(calls.at(-1)).toMatchObject({
@@ -155,9 +152,10 @@ test.skipIf(!local)(
       // Missing credentials leave the submission intact and spend no budget.
       current = await settings();
       await saveSettings(
-        { base_revision: current.revision, ai_spam: { enabled: false, api_key: "__clear__" } },
+        { base_revision: current.revision, ai_spam: { enabled: false } },
         "jev-hot-reload-test",
       );
+      delete process.env.AI_GATEWAY_API_KEY;
       const unavailable = (await settings()).document;
       unavailable.ai_spam.enabled = true;
       check(
@@ -182,11 +180,12 @@ test.skipIf(!local)(
       expect(calls.length).toBe(beforeMissing);
 
       providerStatus = 200;
+      process.env.AI_GATEWAY_API_KEY = "gateway-budget-key";
       current = await settings();
       await saveSettings(
         {
           base_revision: current.revision,
-          ai_spam: { enabled: true, api_key: "gateway-budget-key", daily_limit: 1 },
+          ai_spam: { enabled: true, daily_limit: 1 },
         },
         "jev-hot-reload-test",
       );
@@ -207,8 +206,6 @@ test.skipIf(!local)(
       await db().from("biodays_settings_audit").delete().eq("actor", "jev-hot-reload-test");
       if (oldKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
       else process.env.AI_GATEWAY_API_KEY = oldKey;
-      if (oldEncryptionKey === undefined) delete process.env.BIODAYS_SETTINGS_ENC_KEY;
-      else process.env.BIODAYS_SETTINGS_ENC_KEY = oldEncryptionKey;
     }
   },
   20000,
@@ -218,15 +215,15 @@ test.skipIf(!local)(
   "legacy settings migrate on CAS save, secrets stay private and bad thresholds fail",
   async () => {
     const old = await settings();
-    const oldEncryptionKey = process.env.BIODAYS_SETTINGS_ENC_KEY;
-    process.env.BIODAYS_SETTINGS_ENC_KEY = Buffer.alloc(32, 7).toString("base64");
+    const oldKey = process.env.AI_GATEWAY_API_KEY;
+    process.env.AI_GATEWAY_API_KEY = "gateway-environment-key";
     const legacy = {
       ...defaults(),
       subscriptions_enabled: false,
       ai_spam: {
         enabled: true,
         model: "@cf/cloudflare/clef-flash",
-        api_token: encryptSecret("cloudflare-old-key"),
+        api_token: "v1:cloudflare-old-ciphertext",
         account_id: "old-account",
         style: "decision",
       },
@@ -237,7 +234,6 @@ test.skipIf(!local)(
       expect(loaded.document.ai_spam).toMatchObject({
         enabled: false,
         model: JEV_MODEL,
-        api_key: "",
       });
       const raw = await db()
         .from("biodays_settings")
@@ -260,9 +256,9 @@ test.skipIf(!local)(
         ).rejects.toThrow();
       }
       const saves = await Promise.allSettled(
-        ["gateway-one", "gateway-two"].map((api_key) =>
+        [0.8, 0.9].map((threshold) =>
           saveSettings(
-            { base_revision: loaded.revision, ai_spam: { enabled: true, api_key } },
+            { base_revision: loaded.revision, ai_spam: { enabled: true, threshold } },
             "jev-legacy-test",
           ),
         ),
@@ -273,17 +269,17 @@ test.skipIf(!local)(
       expect(saved.document.subscriptions_enabled).toBe(false);
       expect(saved.document.ai_spam.enabled).toBe(true);
       const serialized = JSON.stringify(publicSettings(saved));
-      expect(serialized).not.toMatch(/cloudflare|gateway-one|gateway-two|v1:/);
+      expect(serialized).not.toMatch(/cloudflare|gateway-environment-key|v1:/);
       const audit = await db()
         .from("biodays_settings_audit")
         .select("changes")
         .eq("actor", "jev-legacy-test");
-      expect(JSON.stringify(audit.data)).not.toMatch(/gateway-one|gateway-two|v1:/);
+      expect(JSON.stringify(audit.data)).not.toMatch(/gateway-environment-key|v1:/);
     } finally {
       await db().from("biodays_settings").update({ document: old.document }).eq("id", true);
       await db().from("biodays_settings_audit").delete().eq("actor", "jev-legacy-test");
-      if (oldEncryptionKey === undefined) delete process.env.BIODAYS_SETTINGS_ENC_KEY;
-      else process.env.BIODAYS_SETTINGS_ENC_KEY = oldEncryptionKey;
+      if (oldKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+      else process.env.AI_GATEWAY_API_KEY = oldKey;
     }
   },
 );

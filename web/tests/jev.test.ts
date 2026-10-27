@@ -1,17 +1,18 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { classifyWithJev, type GatewayFetch } from "@/lib/backend/jev";
-import {
-  defaults,
-  encryptSecret,
-  JEV_MODEL,
-  jevConfiguration,
-  normalizeSettings,
-  publicSettings,
-} from "@/lib/backend/settings";
+import { defaults, JEV_MODEL, normalizeSettings, publicSettings } from "@/lib/backend/settings";
 
+let oldKey: string | undefined;
+beforeEach(() => {
+  oldKey = process.env.AI_GATEWAY_API_KEY;
+});
+afterEach(() => {
+  if (oldKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+  else process.env.AI_GATEWAY_API_KEY = oldKey;
+});
 function config() {
-  process.env.BIODAYS_SETTINGS_ENC_KEY ??= Buffer.alloc(32, 7).toString("base64");
-  return { ...defaults().ai_spam, enabled: true, api_key: encryptSecret("gateway-test-key") };
+  process.env.AI_GATEWAY_API_KEY = "gateway-test-key";
+  return { ...defaults().ai_spam, enabled: true };
 }
 const answer = (probability: unknown) => ({
   model: JEV_MODEL,
@@ -104,7 +105,6 @@ test("legacy settings disable AI, preserve other settings and cannot leak Cloudf
     model: JEV_MODEL,
     threshold: 0.8,
     daily_limit: 123,
-    api_key: "",
   });
   expect(normalized.subscriptions_enabled).toBe(false);
   expect(original.ai_spam.api_token).toBe("legacy-cloudflare-secret");
@@ -116,31 +116,4 @@ test("legacy settings disable AI, preserve other settings and cannot leak Cloudf
   });
   expect(visible.revision).toBe(17);
   expect(JSON.stringify(visible)).not.toMatch(/legacy-cloudflare-secret|api_token|account_id/);
-});
-
-test("saved Gateway key overrides environment, unreadable keys never fall back, secrets are redacted", () => {
-  const old = process.env.AI_GATEWAY_API_KEY;
-  process.env.AI_GATEWAY_API_KEY = "environment-test-key";
-  try {
-    const saved = config();
-    expect(jevConfiguration(saved).apiKey).toBe("gateway-test-key");
-    expect(jevConfiguration({ ...saved, api_key: "" }).apiKey).toBe("environment-test-key");
-    expect(jevConfiguration({ ...saved, api_key: "v1:broken" }).configured).toBe(false);
-    expect(jevConfiguration({ ...saved, model: "other/model" }).configured).toBe(false);
-    const document = defaults();
-    document.ai_spam = saved;
-    const visible = publicSettings({ revision: 1, document, updated_at: "", updated_by: "test" });
-    expect(JSON.stringify(visible)).not.toMatch(/gateway-test-key|environment-test-key|v1:/);
-    expect(
-      ((visible as Record<string, unknown>).ai_spam as { api_key: unknown }).api_key,
-    ).toMatchObject({
-      configured: true,
-      encrypted: true,
-      readable: true,
-      source: "database",
-    });
-  } finally {
-    if (old === undefined) delete process.env.AI_GATEWAY_API_KEY;
-    else process.env.AI_GATEWAY_API_KEY = old;
-  }
 });

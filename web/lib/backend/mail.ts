@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { type CreateEmailOptions, Resend } from "resend";
-import { check, db, HttpError, newID, rpc } from "./db";
+import { check, db, newID, rpc } from "./db";
+
+export { siteURL } from "./deployment";
+
 import { mailConfiguration, type Settings, settings } from "./settings";
 
 export type QueueMessage = {
@@ -37,15 +40,6 @@ export function message(
     },
   };
 }
-export function siteURL() {
-  const value =
-    process.env.BIODAYS_SITE_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-  const url = new URL(value);
-  if (!/^https?:$/.test(url.protocol))
-    throw new HttpError(503, "SERVICE_UNAVAILABLE", "站点地址配置无效。");
-  return url.origin;
-}
 export function safeTask(task: Record<string, unknown>) {
   const {
     payload: _p,
@@ -79,7 +73,7 @@ export async function mailStatus(s: Settings) {
     resend_enabled: config.enabled,
     configured: config.configured,
     missing: config.missing,
-    notify_configured: !!s.resend.notify_to,
+    notify_configured: !!config.notifyTo,
     error: config.error,
     counts,
     recent_errors: (recent.data ?? []).map(safeTask),
@@ -119,10 +113,10 @@ export async function processMail() {
       if (task.provider_key_hash && task.provider_key_hash !== keyHash)
         throw new Error("Provider key changed after first attempt");
       // Freeze from/to before the first external request. Retries use the exact
-      // same payload and stable key even if runtime settings subsequently change.
+      // same payload and stable key even if deployment configuration changes.
       const frozen = {
         ...task.payload,
-        from: task.payload.from || s.resend.from,
+        from: task.payload.from || config.from,
         to: task.payload.to || [task.recipient],
       };
       const updated = await db()

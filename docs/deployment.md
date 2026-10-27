@@ -13,17 +13,27 @@
 | `SUPABASE_URL` | 项目 URL |
 | `SUPABASE_PUBLISHABLE_KEY` | publishable key 或 anon key，用于服务端会话客户端 |
 | `SUPABASE_SECRET_KEY` | secret key 或 service_role key，仅服务端，禁止 NEXT_PUBLIC 前缀 |
-| `BIODAYS_SETTINGS_ENC_KEY` | 32 随机字节的 base64 或 64 位 hex，加密后台保存的密钥 |
 | `BIODAYS_CRON_SECRET` | 队列接口的独立共享密钥，与 Vault 中相同 |
 | `RESEND_WEBHOOK_SECRET` | Resend webhook 签名密钥 |
-| `RESEND_ENABLED` | 首次配置默认开关，建议先 false |
-| `RESEND_API_KEY` | 首次配置引用的 Resend API key，可随后通过后台加密保存替换 |
+| `RESEND_API_KEY` | Resend API key，唯一来源为环境变量 |
 | `RESEND_FROM` | 已验证域名的发件地址，如 `Biodays <hello@example.com>` |
 | `BIODAYS_NOTIFY_TO` | 管理员新反馈与测试邮件收件地址 |
 | `BIODAYS_MAIL_ALLOWLIST` | 测试收件地址白名单，逗号分隔；预览未设置时拒绝发送 |
-| `AI_GATEWAY_API_KEY` | Jev 服务端调用的备用密钥，后台未保存密钥时使用；不会自动启用 AI |
+| `AI_GATEWAY_API_KEY` | Jev 调用的唯一密钥来源；配置后还需在后台开启 AI 复核 |
+| `TURNSTILE_SITE_KEY` | 可选，人机验证的公开 site key |
+| `TURNSTILE_SECRET_KEY` | 可选，服务端验证密钥 |
+| `TURNSTILE_HOSTNAMES` | 可选，允许的域名，逗号分隔，不含协议、路径或端口 |
+| `BIODAYS_FEEDBACK_ENABLED` | 反馈服务总开关，默认 true，可设 false 暂停互动接口 |
+| `NEXT_PUBLIC_BIODAYS_DOCS_URL` | 公开 API 文档链接，构建时写入浏览器代码 |
+| `BIODAYS_DISABLE_ANALYTICS` | 本地建议 true；生产可设置 false |
 
-环境变量中的邮件参数只用于**首次创建**运行设置。已有设置以数据库为准，后续在 `/admin/settings` 修改，下一次相关请求生效。环境引用 `RESEND_API_KEY` 在服务端读取；后台写入新密钥需要有效的加密主密钥。清除密钥填写 `__clear__`，空值表示保留。加密主密钥丢失会使后台保存的密钥不可读取，需要重新配置；备份时单独保管。
+完整示例见仓库根目录和 `web/.env.example`（内容一致）；本地复制到 `web/.env.local`。只有环境变量管理密钥、站点地址、发件地址、管理员收件邮箱、Turnstile site key 与域名。后台 `/admin/settings` 只读展示这些配置的状态，密钥只显示是否存在，不回显内容。检查只验证存在性与格式，不会调用模型或发送邮件，不能代替连通性验证。线上修改 Vercel 环境变量后重新部署；本地修改后重启服务。应用每次相关请求解析当前部署的环境变量，数据库不会覆盖它们。
+
+邮件发送、AI 复核、Turnstile 的功能开关，以及订阅、模型、阈值、限流、调用额度和超时保存在 Supabase，通过后台修改后下一次请求生效。新环境的邮件、AI 和 Turnstile 默认关闭，填好环境变量后在后台启用。`RESEND_ENABLED` 和 `BIODAYS_SETTINGS_ENC_KEY` 已废弃，可从 Vercel 移除。
+
+从旧版升级时，先把仍在使用的密钥、发件地址、管理员邮箱和 Turnstile 参数配置到对应环境；如果旧密钥只有数据库中的密文且无法找回，应到服务商重新生成密钥并更新环境变量。应用 `202610270003_environment_settings.sql` 会清理数据库中的历史部署字段，通过原有版本控制与审计记录清理，保留正常业务配置与反馈，旧 Cloudflare AI 保持关闭。即使尚未执行清理迁移，新应用也会忽略这些旧字段。不要依赖旧数据库值继续发信或通过人机验证。
+
+该迁移清理后，旧应用的配置读取方式已不兼容，不能直接回滚到依赖后台密钥的版本。若需要回滚，应先部署兼容环境变量的旧版补丁，或使用受控备份恢复旧配置；不要将密文或密钥写入 Git。
 
 在本地可信终端配置生产项目的服务端变量，通过 `BIODAYS_ADMIN_EMAIL`、`BIODAYS_ADMIN_PASSWORD` 执行 `cd web && bun run admin:create`。脚本不会输出密码。创建后移除密码变量。已有 Supabase 用户的 UUID 可由 SQL editor 加入 `biodays_admins`；用户 metadata 不授予权限。
 
@@ -33,7 +43,7 @@
 
 先应用 `202610270002_jev.sql`，再部署新应用。它新增可空的 `spam_probability`，保留原置信度及其他数据。旧应用可以忽略新列；新应用的 `/readyz` 会检查该列是否存在。旧 Cloudflare AI 设置在新应用读取时兼容转换为关闭的 Jev 设置，保留合法的限额及超时；读取不写库、不递增版本，下一次管理员保存通过原有 CAS 和审计写入新格式。旧账号、模式与 token 不会回显或传给 Gateway。
 
-在 Vercel AI Gateway 创建密钥并配置 `AI_GATEWAY_API_KEY`，或在后台加密保存密钥。后台密钥优先，清除后使用环境变量；已保存但不可读取的密钥不会静默切换账号。后台显示实际来源。后台设置下次请求生效，Vercel 环境变量变更需要重新部署。即使环境有 OIDC token，也只有显式配置 Gateway 密钥且打开后台开关后才会调用模型。
+在 Vercel AI Gateway 创建密钥并配置 `AI_GATEWAY_API_KEY`，后台只显示密钥是否配置。旧数据库密钥被忽略；后台接口拒绝密钥与其他部署字段写入，返回 422 READ_ONLY_SETTING。Vercel 环境变量变更需要重新部署。即使环境有 OIDC token，也只有显式配置 Gateway 密钥且打开后台开关后才会调用模型。
 
 在 `/admin/settings` 启用规则判断与 Jev 复核。先测试再启用，默认仍关闭。模型只接收脱敏并截断的标题与正文，不接收访客 IP、昵称、邮箱字段或站点密钥。SDK 遥测未启用。发送到外部模型的内容仍可能包含无法自动识别的个人信息，因此只提交必要文字。
 
@@ -41,18 +51,7 @@
 
 Boolean 答案是 P(垃圾)，与历史置信度独立保存。初始概率 ≥0.8 标垃圾，≤0.2 判正常，中间值待复核；阈值必须大于 0.5 且不大于 1。后台同时显示模型与垃圾概率；旧数据只显示历史置信度，不自动转换。上线前用带人工标签的中文反馈测试误判与漏判，再调整阈值。SDK 合约和本地业务测试使用模拟 Gateway 网络响应，不能代替真实模型准确率评估。
 
-回滚到 Jev 接入前的应用时，先关闭 AI，并将 `ai_spam` 恢复成旧应用所需的字段形态，再回滚代码。可通过 Supabase SQL editor 执行以下带版本和审计的修改（保留其他设置；旧 AI 保持关闭）：
-
-```sql
-select public.biodays_save_settings(
-  revision,
-  jsonb_set(document, '{ai_spam}', '{"enabled":false,"account_id":"","model":"@cf/cloudflare/clef-flash","style":"decision","timeout_ms":5000,"threshold":0.8,"daily_limit":500,"max_chars":4000,"api_token":""}'::jsonb),
-  'jev-rollback',
-  '{"ai_spam":"disabled for pre-Jev application rollback"}'
-) from public.biodays_settings where id;
-```
-
-新增概率列可以保留，避免删除已记录的判断。若回滚时有并发保存导致版本冲突，刷新当前设置后重试。
+回滚到旧 AI 实现前，先关闭 AI，并确认目标应用使用环境变量读取密钥。执行环境配置清理迁移后，不能直接回滚到依赖后台密钥的应用。新增的概率列可以保留，避免删除已记录的判断。
 
 ## Resend 与队列
 
@@ -86,6 +85,6 @@ Resend 的幂等键有效期为 24 小时，本系统在 23 小时后保守停�
 
 `/healthz` 检查应用存活；`/readyz` 分开报告内容与互动数据服务。后台邮件页显示积压及错误；同时检查 Supabase Cron 执行记录和 Vercel Functions 错误。`sent` 只表示 Resend 接受请求，最终接收情况通过 `delivery_status` 查看。
 
-代码回滚使用 Vercel 的前一个部署；本轮数据库只有新增对象，没有旧运营数据迁移。回滚到旧 Go 架构时，先关闭新 Cron 和 Resend 发送，恢复基线提交 `f1f1cb4` 对应的部署，避免两个系统同时发信。迁移上线后产生的反馈不会自动复制到旧架构，回滚期间保留 Supabase 项目和备份以便恢复。
+代码回滚使用 Vercel 的前一个部署；数据库保留反馈与邮件记录；环境配置迁移会清理历史部署字段，回滚该版本前需按上面的兼容要求处理。回滚到旧 Go 架构时，先关闭新 Cron 和 Resend 发送，恢复基线提交 `f1f1cb4` 对应的部署，避免两个系统同时发信。迁移上线后产生的反馈不会自动复制到旧架构，回滚期间保留 Supabase 项目和备份以便恢复。
 
 本地回归使用隔离 Supabase；邮件发送请求使用网络模拟，webhook 使用真实 SDK 验签。它不能替代正式 Resend 域名、收件箱、Vercel Preview 和云端 Cron 验收。

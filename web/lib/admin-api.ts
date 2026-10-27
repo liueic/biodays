@@ -253,84 +253,13 @@ export async function retryMail(id: string): Promise<void> {
 
 // ── 运行时设置 ────────────────────────────────────────────────────────────
 
-export type SecretState = {
-  configured: boolean;
-  encrypted: boolean;
-  readable: boolean;
-  source: "database" | "environment" | "none";
-};
-
-export type ResendSettings = {
-  enabled: boolean;
-  api_key: SecretState;
-  from: string;
-  notify_to: string;
-};
-
-export type TurnstileSettings = {
-  enabled: boolean;
-  site_key: string;
-  hostnames: string[];
-  timeout_ms: number;
-  secret_key: SecretState;
-};
-
-export type SpamSettings = {
-  enabled: boolean;
-  review_score: number;
-  block_score: number;
-};
-
-export type AISpamSettings = {
-  enabled: boolean;
-  model: string;
-  timeout_ms: number;
-  threshold: number;
-  daily_limit: number;
-  max_chars: number;
-  api_key: SecretState;
-};
-
-export type RateLimitSettings = {
-  submit_hourly: number;
-  submit_daily: number;
-  resend_hourly: number;
-  resend_daily: number;
-  confirm_hourly: number;
-  confirm_daily: number;
-  confirm_daily_global: number;
-  admin_mail_hourly: number;
-};
-
-export type RuntimeSettings = {
-  revision: number;
-  updated_at: string;
-  updated_by: string;
-  encryption_key_configured: boolean;
-  clear_sentinel: string;
-  subscriptions_enabled: boolean;
-  resend: ResendSettings;
-  rate_limits: RateLimitSettings;
-  turnstile: TurnstileSettings;
-  spam: SpamSettings;
-  ai_spam: AISpamSettings;
-};
-
-export type ResendPatch = Omit<ResendSettings, "api_key"> & { api_key?: string };
-export type TurnstilePatch = Omit<TurnstileSettings, "secret_key" | "hostnames"> & {
-  secret_key?: string;
-  hostnames?: string[];
-};
-export type AISpamPatch = Omit<AISpamSettings, "api_key"> & { api_key?: string };
-
-export type SettingsPatch = {
-  base_revision: number;
-  subscriptions_enabled?: boolean;
-  resend?: ResendPatch;
-  rate_limits?: RateLimitSettings;
-  turnstile?: TurnstilePatch;
-  spam?: SpamSettings;
-  ai_spam?: AISpamPatch;
+// Type-only imports are erased; environment parsing remains server-only.
+export type RuntimeSettings = ReturnType<typeof import("@/lib/backend/settings").publicSettings>;
+export type SettingsPatch = { base_revision: number; subscriptions_enabled?: boolean } & {
+  [K in Exclude<
+    keyof import("@/lib/backend/settings").Settings,
+    "subscriptions_enabled"
+  >]?: Partial<import("@/lib/backend/settings").Settings[K]>;
 };
 
 export type SettingsAuditRecord = {

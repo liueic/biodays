@@ -176,12 +176,13 @@ export async function submit(raw: Record<string, unknown>, request: Request, s: 
       ),
     );
   }
-  if (decision.spam_verdict !== "spam" && s.resend.notify_to)
+  const notifyTo = mailConfiguration(s).notifyTo;
+  if (decision.spam_verdict !== "spam" && notifyTo)
     mail.push(
       message(
         "admin_new_feedback",
         `new:${f.id}`,
-        s.resend.notify_to,
+        notifyTo,
         `Biodays 新反馈：${f.title}`,
         `${KIND_LABELS[f.kind]}\n${f.title}\n\n${f.content}\n\n来源：${f.source_url || "无"}\n关联故事：${f.story_id || "无"}\n${siteURL()}/admin/feedback/${f.id}`,
         f.id,

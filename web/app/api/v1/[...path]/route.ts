@@ -4,6 +4,7 @@ import { ApiError, type StoryQuery } from "@/lib/api";
 import { clientIP, rateLimit } from "@/lib/backend/abuse";
 import { admin, authClient, csrfFor, requireCSRF, sameOrigin } from "@/lib/backend/auth";
 import { check, db, HttpError, newID, rpc } from "@/lib/backend/db";
+import { turnstileEnvironment } from "@/lib/backend/deployment";
 import {
   getFeedback,
   resend,
@@ -12,7 +13,7 @@ import {
   updateFeedback,
 } from "@/lib/backend/feedback";
 import { mailStatus, message, safeTask } from "@/lib/backend/mail";
-import { publicSettings, saveSettings, settings } from "@/lib/backend/settings";
+import { mailConfiguration, publicSettings, saveSettings, settings } from "@/lib/backend/settings";
 import { datasetMeta, listStories, stories, storyByID, tagCounts } from "@/lib/content";
 import { KIND_LABELS } from "@/lib/feedback-labels";
 import {
@@ -166,7 +167,7 @@ async function handle(request: NextRequest, ctx: { params: Promise<{ path: strin
           },
           verification: {
             turnstile_enabled: s?.turnstile.enabled ?? false,
-            turnstile_site_key: s?.turnstile.site_key,
+            turnstile_site_key: s?.turnstile.enabled ? turnstileEnvironment().siteKey : undefined,
             ai_assisted: s?.ai_spam.enabled ?? false,
           },
         },
@@ -324,14 +325,14 @@ async function handle(request: NextRequest, ctx: { params: Promise<{ path: strin
       if (path === "admin/mail/test" && method === "POST") {
         const s = (await settings()).document;
         await rateLimit("test_mail", [session.user.id], s.rate_limits.admin_mail_hourly);
-        if (!s.resend.notify_to)
-          throw new HttpError(400, "INVALID_PARAM", "请先设置管理员通知邮箱。");
+        const notifyTo = mailConfiguration(s).notifyTo;
+        if (!notifyTo) throw new HttpError(400, "INVALID_PARAM", "请先设置管理员通知邮箱。");
         await rpc("enqueue", {
           p_mail: [
             message(
               "resend_test",
               `test:${newID()}`,
-              s.resend.notify_to,
+              notifyTo,
               "Biodays Resend 测试",
               "这是一封 Biodays 测试邮件。",
             ),

@@ -1,8 +1,9 @@
 import { createHash, createHmac } from "node:crypto";
 import type { SubmitFeedbackInput } from "@/lib/feedback-api";
 import { check, db, HttpError, rpc } from "./db";
+import { turnstileEnvironment } from "./deployment";
 import { classifyWithJev } from "./jev";
-import { decryptSecret, jevConfiguration, type Settings } from "./settings";
+import { jevConfiguration, type Settings } from "./settings";
 import { disposableDomains, shortenerHosts, spamKeywords } from "./spam-lists";
 export const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 export function clientIP(request: Request) {
@@ -177,12 +178,15 @@ export async function spamDecision(input: SubmitFeedbackInput, s: Settings) {
 }
 export async function verifyTurnstile(token: string | undefined, request: Request, s: Settings) {
   if (!s.turnstile.enabled) return;
+  const config = turnstileEnvironment();
+  if (!config.configured)
+    throw new HttpError(503, "VERIFICATION_UNAVAILABLE", "人机验证环境变量配置不完整。");
   if (!token) throw new HttpError(400, "TURNSTILE_REQUIRED", "请完成人机验证。");
   try {
     const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
       method: "POST",
       body: new URLSearchParams({
-        secret: decryptSecret(s.turnstile.secret_key),
+        secret: config.secretKey,
         response: token,
         remoteip: clientIP(request),
       }),
@@ -190,11 +194,7 @@ export async function verifyTurnstile(token: string | undefined, request: Reques
     });
     if (!response.ok) throw new Error("Unavailable");
     const data = await response.json();
-    if (
-      !data.success ||
-      !s.turnstile.hostnames.includes(data.hostname) ||
-      data.action !== "feedback"
-    )
+    if (!data.success || !config.hostnames.includes(data.hostname) || data.action !== "feedback")
       throw new HttpError(403, "TURNSTILE_FAILED", "人机验证失败，请重试。");
   } catch (e) {
     if (e instanceof HttpError) throw e;

@@ -18,9 +18,6 @@ const groups: Record<string, { label: string; fields: Record<string, string> }> 
     label: "Resend 邮件",
     fields: {
       enabled: "启用发送",
-      from: "发件地址（已在 Resend 验证的域名）",
-      notify_to: "管理员通知邮箱",
-      api_key: "API Key",
     },
   },
   rate_limits: {
@@ -40,9 +37,6 @@ const groups: Record<string, { label: string; fields: Record<string, string> }> 
     label: "Turnstile",
     fields: {
       enabled: "启用人机验证",
-      site_key: "Site Key",
-      secret_key: "Secret Key",
-      hostnames: "允许的主机名（逗号分隔）",
       timeout_ms: "超时（毫秒）",
     },
   },
@@ -54,7 +48,6 @@ const groups: Record<string, { label: string; fields: Record<string, string> }> 
     label: "Jev · Vercel AI Gateway（仅复核可疑内容）",
     fields: {
       enabled: "启用 AI 复核",
-      api_key: "AI Gateway API Key",
       model: "模型",
       timeout_ms: "超时（毫秒）",
       threshold: "垃圾概率上限（大于 0.5，最大 1）",
@@ -63,14 +56,14 @@ const groups: Record<string, { label: string; fields: Record<string, string> }> 
     },
   },
 };
-const secrets = new Set(["resend.api_key", "turnstile.secret_key", "ai_spam.api_key"]);
 export function SettingsPanel() {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null),
     [draft, setDraft] = useState<Draft>({}),
     [audit, setAudit] = useState<SettingsAuditRecord[]>([]),
     [notice, setNotice] = useState(""),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [refreshing, setRefreshing] = useState(false);
   const initialize = useCallback((s: RuntimeSettings) => {
     setSettings(s);
     const values: Draft = { subscriptions_enabled: s.subscriptions_enabled };
@@ -79,11 +72,7 @@ export function SettingsPanel() {
         const value = (s[group as keyof RuntimeSettings] as unknown as Record<string, unknown>)[
           key
         ];
-        values[`${group}.${key}`] = secrets.has(`${group}.${key}`)
-          ? ""
-          : Array.isArray(value)
-            ? value.join(", ")
-            : (value as string | number | boolean);
+        values[`${group}.${key}`] = value as string | number | boolean;
       }
     setDraft(values);
   }, []);
@@ -95,6 +84,19 @@ export function SettingsPanel() {
       .then((r) => setAudit(r.data))
       .catch((e) => setError(e.message));
   }, [initialize]);
+  async function refreshStatus() {
+    setRefreshing(true);
+    setError("");
+    try {
+      const fresh = (await getSettings()).data;
+      // Preserve the form revision and draft so refresh cannot bypass CAS checks.
+      setSettings((current) => (current ? { ...current, deployment: fresh.deployment } : fresh));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "状态读取失败");
+    } finally {
+      setRefreshing(false);
+    }
+  }
   async function save() {
     if (!settings) return;
     setBusy(true);
@@ -108,14 +110,7 @@ export function SettingsPanel() {
       const section: Record<string, unknown> = {};
       for (const key of Object.keys(fields)) {
         const value = draft[`${group}.${key}`];
-        if (secrets.has(`${group}.${key}`) && !value) continue;
-        section[key] =
-          key === "hostnames"
-            ? String(value)
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : value;
+        section[key] = value;
       }
       patch[group] = section;
     }
@@ -132,18 +127,76 @@ export function SettingsPanel() {
   if (!settings) return <p role="status">{error || "正在加载设置…"}</p>;
   return (
     <div className="flex flex-col gap-4">
+      <Fieldset legend="部署配置（只读）">
+        <div className="flex flex-col gap-3">
+          <p className="reading">
+            密钥、站点地址与服务连接信息由环境变量管理。线上请在 Vercel 修改并重新部署，本地请修改
+            web/.env.local 并重启服务。
+          </p>
+          <p className="reading">
+            当前环境：{settings.deployment.environment}
+            。这里检查配置是否齐全及格式是否有效，不会发送邮件或调用 AI，不能代替服务连通性测试。
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[12px]" aria-label="环境变量配置状态">
+              <thead>
+                <tr>
+                  <th className="p-2">配置</th>
+                  <th className="p-2">状态</th>
+                  <th className="p-2">当前值</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settings.deployment.checks.map((check) => (
+                  <tr
+                    key={check.name}
+                    className="border-t border-[#aaa]"
+                    data-environment-variable={check.name}
+                  >
+                    <td className="p-2">
+                      <div>{check.label}</div>
+                      <code className="break-all">{check.name}</code>
+                    </td>
+                    <td className="p-2">
+                      {
+                        {
+                          configured: "已配置",
+                          missing: "未配置",
+                          invalid: "格式无效",
+                          default: "默认规则",
+                        }[check.status]
+                      }
+                    </td>
+                    <td className="p-2 break-all">
+                      {check.secret
+                        ? check.status === "configured"
+                          ? "已配置（隐藏）"
+                          : "—"
+                        : check.value || "—"}
+                      {check.message && <p>{check.message}</p>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="reading">
+            配置完整性：Resend {settings.deployment.services.resend.configured ? "完整" : "不完整"}
+            ； AI Gateway {settings.deployment.services.ai_gateway.configured ? "完整" : "不完整"}；
+            Turnstile {settings.deployment.services.turnstile.configured ? "完整" : "不完整"}。
+            配置齐全后可在下方启用对应功能。
+          </p>
+          <Button type="button" disabled={refreshing || busy} onClick={() => void refreshStatus()}>
+            {refreshing ? "读取中…" : "刷新配置状态"}
+          </Button>
+        </div>
+      </Fieldset>
       <p className="reading">
-        版本 {settings.revision}。密钥留空表示保留，填写 __clear__ 表示清除。密钥不会回显。
+        业务配置版本 {settings.revision}。保存后下一次请求生效，无需重新部署。
       </p>
       <p className="reading">
         Jev 的垃圾概率达到上限时标记为垃圾，低于或等于 1 − 上限时判为正常，中间值保留人工审核。
-        Gateway 密钥优先使用后台设置；清除后使用服务器的 AI_GATEWAY_API_KEY（如已配置）。
       </p>
-      {!settings.encryption_key_configured && (
-        <p role="status">
-          保存新密钥前需配置 BIODAYS_SETTINGS_ENC_KEY。环境变量中的 Resend 密钥仍可使用。
-        </p>
-      )}
       <label>
         <input
           type="checkbox"
@@ -157,22 +210,10 @@ export function SettingsPanel() {
           <div className="grid gap-3 md:grid-cols-2">
             {Object.entries(fields).map(([key, label]) => {
               const path = `${group}.${key}`,
-                value = draft[path],
-                secret = secrets.has(path),
-                state = secret
-                  ? (
-                      settings[group as keyof RuntimeSettings] as unknown as Record<
-                        string,
-                        { configured: boolean; readable: boolean; source: string }
-                      >
-                    )[key]
-                  : null;
+                value = draft[path];
               return (
                 <label key={path} className="flex flex-col gap-1 text-[12px]" htmlFor={path}>
                   {label}
-                  {state
-                    ? `（${state.configured ? (state.readable ? "已配置" : "不可读取") : "未配置"}${state.source === "environment" ? "，环境变量" : ""}）`
-                    : ""}
                   {typeof value === "boolean" ? (
                     <input
                       id={path}
@@ -183,7 +224,7 @@ export function SettingsPanel() {
                   ) : (
                     <Input
                       id={path}
-                      type={secret ? "password" : typeof value === "number" ? "number" : "text"}
+                      type={typeof value === "number" ? "number" : "text"}
                       autoComplete="off"
                       value={String(value ?? "")}
                       onChange={(e) =>
@@ -207,7 +248,7 @@ export function SettingsPanel() {
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      <Button type="button" disabled={busy} onClick={() => void save()}>
+      <Button type="button" disabled={busy || refreshing} onClick={() => void save()}>
         {busy ? "保存中…" : "保存设置"}
       </Button>
       <Fieldset legend="最近 20 次设置变更">

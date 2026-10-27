@@ -133,7 +133,7 @@ export function MailPanel() {
               <Link href="/admin/settings" className="underline">
                 站点设置
               </Link>
-              中启用并配置 Resend。
+              中查看环境变量状态并启用发送。
             </p>
           )}
           {status.error && <p className="mt-2 text-[#7a0000]">发送暂停原因：{status.error}</p>}

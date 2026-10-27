@@ -142,8 +142,12 @@ export const openapi = {
       delete: operation("Delete feedback; refused while mail is in flight"),
     },
     "/api/v1/admin/settings": {
-      get: operation("Runtime settings; secrets are write-only state"),
-      patch: operation("Save settings with base_revision; stale revision returns 409"),
+      get: operation(
+        "Business settings and read-only environment configuration status; no secrets returned",
+      ),
+      patch: operation(
+        "Save business settings with base_revision; deployment fields return 422, stale revision returns 409",
+      ),
     },
     "/api/v1/admin/settings/audit": { get: operation("Settings audit; page,page_size") },
     "/api/v1/admin/mail/status": { get: operation("Resend availability and queue counts") },
