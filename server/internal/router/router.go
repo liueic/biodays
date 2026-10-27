@@ -11,6 +11,7 @@ import (
 	"biodays/server/internal/handler"
 	"biodays/server/internal/middleware"
 	"biodays/server/internal/service"
+	"biodays/server/internal/settings"
 	"biodays/server/internal/store"
 
 	"github.com/gin-contrib/cors"
@@ -25,6 +26,9 @@ type Deps struct {
 	Feedback        *store.FeedbackStore
 	FeedbackService *service.FeedbackService
 	AdminService    *service.AdminService
+	// SettingsManager serves the admin settings API; nil keeps the routes
+	// off (feedback subsystem not started).
+	SettingsManager *settings.Manager
 }
 
 func New(cfg config.Config, st *store.Store, logger *slog.Logger) (*gin.Engine, error) {
@@ -89,7 +93,6 @@ func NewWithClockAndDeps(cfg config.Config, st *store.Store, logger *slog.Logger
 	feedback := v1.Group("/feedback")
 	feedback.Use(middleware.NoStore())
 	feedback.GET("/options", feedbackHandler.Options)
-	feedback.POST("/challenge", feedbackHandler.Challenge)
 	feedback.POST("/subscriptions/confirm", feedbackHandler.ConfirmSubscription)
 	feedback.POST("/subscriptions/resend", feedbackHandler.ResendConfirmation)
 	feedback.POST("/subscriptions/unsubscribe", feedbackHandler.Unsubscribe)
@@ -97,6 +100,7 @@ func NewWithClockAndDeps(cfg config.Config, st *store.Store, logger *slog.Logger
 
 	adminHandler := handler.NewAdminHandler(deps.AdminService, deps.FeedbackService, logger, secureCookie(cfg.SiteURL))
 	mailHandler := handler.NewMailHandler(deps.FeedbackService, logger)
+	settingsHandler := handler.NewSettingsHandler(deps.SettingsManager, deps.Feedback, logger)
 	admin := v1.Group("/admin")
 	admin.Use(middleware.PrivateHeaders())
 	admin.Use(middleware.RequireOrigin(allowedOrigins))
@@ -109,6 +113,8 @@ func NewWithClockAndDeps(cfg config.Config, st *store.Store, logger *slog.Logger
 	authed.GET("/feedback/:id", adminHandler.GetFeedback)
 	authed.GET("/mail/status", mailHandler.Status)
 	authed.GET("/mail/outbox", mailHandler.Outbox)
+	authed.GET("/settings", settingsHandler.GetSettings)
+	authed.GET("/settings/audit", settingsHandler.ListSettingsAudit)
 
 	writes := authed.Group("")
 	writes.Use(middleware.RequireCSRF(deps.AdminService))
@@ -117,6 +123,7 @@ func NewWithClockAndDeps(cfg config.Config, st *store.Store, logger *slog.Logger
 	writes.DELETE("/feedback/:id", adminHandler.DeleteFeedback)
 	writes.POST("/mail/test", mailHandler.SendTest)
 	writes.POST("/mail/outbox/:id/retry", mailHandler.Retry)
+	writes.PATCH("/settings", settingsHandler.UpdateSettings)
 
 	// Story management accepts either the static API token (Bearer, for
 	// scripts) or the admin cookie session (web UI); the group is mounted

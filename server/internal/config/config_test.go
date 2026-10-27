@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"biodays/server/internal/config"
+	"biodays/server/internal/settings"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -67,8 +68,6 @@ func TestAntiSpamDefaults(t *testing.T) {
 	enableFeedback(t)
 	cfg, err := config.Load()
 	require.NoError(t, err)
-	require.True(t, cfg.PowEnabled)
-	require.Equal(t, 4, cfg.PowDifficulty)
 	require.False(t, cfg.TurnstileEnabled)
 	require.True(t, cfg.SpamEnabled)
 	require.Equal(t, 30, cfg.SpamReviewScore)
@@ -78,35 +77,48 @@ func TestAntiSpamDefaults(t *testing.T) {
 	require.Equal(t, "decision", cfg.AISpamStyle)
 }
 
-func TestLoadRejectsInvalidPowDifficulty(t *testing.T) {
+func TestSettingsSeedCarriesEnvironmentValues(t *testing.T) {
 	enableFeedback(t)
-	t.Setenv("BIODAYS_FEEDBACK_POW_DIFFICULTY", "9")
-	_, err := config.Load()
-	require.ErrorContains(t, err, "BIODAYS_FEEDBACK_POW_DIFFICULTY")
+	t.Setenv("BIODAYS_FEEDBACK_SUBMIT_HOURLY", "7")
+	t.Setenv("BIODAYS_FEEDBACK_SPAM_REVIEW_SCORE", "25")
+	cfg, err := config.Load()
+	require.NoError(t, err)
+	seed := cfg.SettingsSeed()
+	require.Equal(t, 7, seed.RateLimits.SubmitHourly)
+	require.Equal(t, 25, seed.Spam.ReviewScore)
+	require.Equal(t, settings.DocumentVersion, seed.Version)
 }
 
-func TestLoadRejectsTurnstileWithoutKeys(t *testing.T) {
+func TestSettingsEncryptionKeyValidation(t *testing.T) {
 	enableFeedback(t)
-	t.Setenv("BIODAYS_FEEDBACK_TURNSTILE_ENABLED", "true")
+	t.Setenv("BIODAYS_SETTINGS_ENC_KEY", "not-base64!!")
 	_, err := config.Load()
-	require.ErrorContains(t, err, "Turnstile is enabled")
+	require.ErrorContains(t, err, "BIODAYS_SETTINGS_ENC_KEY")
+
+	t.Setenv("BIODAYS_SETTINGS_ENC_KEY", "aGVsbG8=") // valid base64, wrong length
+	_, err = config.Load()
+	require.ErrorContains(t, err, "32 bytes")
+
+	t.Setenv("BIODAYS_SETTINGS_ENC_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=") // 32 bytes
+	_, err = config.Load()
+	require.NoError(t, err)
 }
 
-func TestLoadRejectsAIWithoutCredentials(t *testing.T) {
-	enableFeedback(t)
-	t.Setenv("BIODAYS_AI_SPAM_ENABLED", "true")
-	_, err := config.Load()
-	require.ErrorContains(t, err, "AI spam classification is enabled")
-}
-
-func TestLoadRejectsInvalidAIStyle(t *testing.T) {
+func TestSettingsSeedValidationRejectsInvalidAIStyle(t *testing.T) {
 	enableFeedback(t)
 	t.Setenv("BIODAYS_AI_SPAM_ENABLED", "true")
 	t.Setenv("BIODAYS_CF_ACCOUNT_ID", "account")
 	t.Setenv("BIODAYS_CF_API_TOKEN", "token")
 	t.Setenv("BIODAYS_AI_SPAM_STYLE", "magic")
-	_, err := config.Load()
-	require.ErrorContains(t, err, "BIODAYS_AI_SPAM_STYLE")
+	cfg, err := config.Load()
+	require.NoError(t, err) // env load defers group validation to the seed document
+	seed := cfg.SettingsSeed()
+	seed.AISpam.APIToken = "v1:plaintext-placeholder" // pretend the manager encrypted it
+	err = settings.Validate(seed, true)
+	require.Error(t, err)
+	var validation *settings.ValidationError
+	require.ErrorAs(t, err, &validation)
+	require.Equal(t, "ai_spam.style", validation.Field)
 }
 
 func TestLoadRejectsInvalidDBDSN(t *testing.T) {

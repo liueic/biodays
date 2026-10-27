@@ -441,6 +441,122 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/admin/settings": {
+            "get": {
+                "description": "返回 SMTP、频控、Turnstile、垃圾评分与订阅开关的当前值；密钥字段只返回配置状态，永不回传内容。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "运行时设置",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.SettingsResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "按 base_revision 做乐观并发；未提供的组不变。密钥字段留空表示不变，填 __clear__ 表示清除；保存后立即生效，无需重启。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "更新运行时设置",
+                "parameters": [
+                    {
+                        "description": "设置补丁",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.settingsPatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.SettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/settings/audit": {
+            "get": {
+                "description": "分页返回设置修改记录（新到旧）；密钥变更只显示掩码。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "设置修改审计",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量，最大 100",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.SettingsAuditResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/admin/stories": {
             "get": {
                 "description": "与公开列表相同的过滤参数，默认 summary 视图；需要管理员会话或 API Token。",
@@ -723,44 +839,6 @@ const docTemplate = `{
                     },
                     "413": {
                         "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.ErrorResponse"
-                        }
-                    },
-                    "429": {
-                        "description": "Too Many Requests",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.ErrorResponse"
-                        }
-                    },
-                    "503": {
-                        "description": "Service Unavailable",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/feedback/challenge": {
-            "post": {
-                "description": "返回一次性、绑定客户端 IP 的 SHA-256 工作量证明挑战。挑战在服务端存储，提交后单次消费。",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "feedback"
-                ],
-                "summary": "签发 PoW 挑战",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.ChallengeResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.ErrorResponse"
                         }
@@ -1321,29 +1399,6 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "biodays_server_internal_model.ChallengeDTO": {
-            "type": "object",
-            "properties": {
-                "challenge_id": {
-                    "type": "string"
-                },
-                "difficulty": {
-                    "type": "integer"
-                },
-                "expires_at": {
-                    "type": "string"
-                },
-                "issued_at": {
-                    "type": "string"
-                },
-                "min_submit_seconds": {
-                    "type": "integer"
-                },
-                "salt": {
-                    "type": "string"
-                }
-            }
-        },
         "biodays_server_internal_model.FeedbackDetailDTO": {
             "type": "object",
             "properties": {
@@ -1602,6 +1657,10 @@ const docTemplate = `{
                         "format": "int64"
                     }
                 },
+                "error": {
+                    "description": "Error explains why delivery is currently paused (disabled, incomplete\nconfig, or unreadable secret); empty when healthy.",
+                    "type": "string"
+                },
                 "missing": {
                     "type": "array",
                     "items": {
@@ -1821,15 +1880,6 @@ const docTemplate = `{
                 "ai_assisted": {
                     "type": "boolean"
                 },
-                "pow_difficulty": {
-                    "type": "integer"
-                },
-                "pow_enabled": {
-                    "type": "boolean"
-                },
-                "pow_min_seconds": {
-                    "type": "integer"
-                },
                 "turnstile_enabled": {
                     "type": "boolean"
                 },
@@ -1870,6 +1920,141 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "biodays_server_internal_settings.AISpamGroup": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "string"
+                },
+                "api_token": {
+                    "description": "encrypted; never returned",
+                    "type": "string"
+                },
+                "daily_limit": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "max_chars": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "style": {
+                    "description": "decision | chat",
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                },
+                "timeout_ms": {
+                    "type": "integer"
+                }
+            }
+        },
+        "biodays_server_internal_settings.RateLimitsGroup": {
+            "type": "object",
+            "properties": {
+                "admin_mail_hourly": {
+                    "type": "integer"
+                },
+                "confirm_daily": {
+                    "type": "integer"
+                },
+                "confirm_daily_global": {
+                    "type": "integer"
+                },
+                "confirm_hourly": {
+                    "type": "integer"
+                },
+                "resend_daily": {
+                    "type": "integer"
+                },
+                "resend_hourly": {
+                    "type": "integer"
+                },
+                "submit_daily": {
+                    "type": "integer"
+                },
+                "submit_hourly": {
+                    "type": "integer"
+                }
+            }
+        },
+        "biodays_server_internal_settings.SMTPGroup": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "notify_to": {
+                    "type": "string"
+                },
+                "password": {
+                    "description": "encrypted; never returned by the API",
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "timeout_ms": {
+                    "type": "integer"
+                },
+                "tls_mode": {
+                    "description": "starttls | implicit_tls",
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "biodays_server_internal_settings.SpamGroup": {
+            "type": "object",
+            "properties": {
+                "block_score": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "review_score": {
+                    "type": "integer"
+                }
+            }
+        },
+        "biodays_server_internal_settings.TurnstileGroup": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "hostnames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "secret_key": {
+                    "description": "encrypted; never returned",
+                    "type": "string"
+                },
+                "site_key": {
+                    "type": "string"
+                },
+                "timeout_ms": {
+                    "type": "integer"
                 }
             }
         },
@@ -2000,14 +2185,6 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handler.ChallengeResponse": {
-            "type": "object",
-            "properties": {
-                "data": {
-                    "$ref": "#/definitions/biodays_server_internal_model.ChallengeDTO"
-                }
-            }
-        },
         "internal_handler.ErrorBody": {
             "type": "object",
             "properties": {
@@ -2132,6 +2309,28 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.SettingsAuditResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.settingsAuditDTO"
+                    }
+                },
+                "meta": {
+                    "$ref": "#/definitions/internal_handler.ListMeta"
+                }
+            }
+        },
+        "internal_handler.SettingsResponse": {
+            "type": "object",
+            "properties": {
+                "data": {
+                    "$ref": "#/definitions/internal_handler.settingsPublic"
+                }
+            }
+        },
         "internal_handler.StoryListResponse": {
             "type": "object",
             "properties": {
@@ -2212,6 +2411,38 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.aiSpamPublic": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "string"
+                },
+                "api_token": {
+                    "$ref": "#/definitions/internal_handler.secretState"
+                },
+                "daily_limit": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "max_chars": {
+                    "type": "integer"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "style": {
+                    "type": "string"
+                },
+                "threshold": {
+                    "type": "number"
+                },
+                "timeout_ms": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_handler.resendRequest": {
             "type": "object",
             "properties": {
@@ -2223,15 +2454,139 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.secretState": {
+            "type": "object",
+            "properties": {
+                "configured": {
+                    "type": "boolean"
+                },
+                "encrypted": {
+                    "type": "boolean"
+                },
+                "readable": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.settingsAuditDTO": {
+            "type": "object",
+            "properties": {
+                "actor": {
+                    "type": "string"
+                },
+                "changes": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.settingsPatchRequest": {
+            "type": "object",
+            "properties": {
+                "ai_spam": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.AISpamGroup"
+                },
+                "base_revision": {
+                    "type": "integer"
+                },
+                "rate_limits": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.RateLimitsGroup"
+                },
+                "smtp": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.SMTPGroup"
+                },
+                "spam": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.SpamGroup"
+                },
+                "subscriptions_enabled": {
+                    "type": "boolean"
+                },
+                "turnstile": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.TurnstileGroup"
+                }
+            }
+        },
+        "internal_handler.settingsPublic": {
+            "type": "object",
+            "properties": {
+                "ai_spam": {
+                    "$ref": "#/definitions/internal_handler.aiSpamPublic"
+                },
+                "clear_sentinel": {
+                    "type": "string"
+                },
+                "encryption_key_configured": {
+                    "type": "boolean"
+                },
+                "rate_limits": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.RateLimitsGroup"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "smtp": {
+                    "$ref": "#/definitions/internal_handler.smtpPublic"
+                },
+                "spam": {
+                    "$ref": "#/definitions/biodays_server_internal_settings.SpamGroup"
+                },
+                "subscriptions_enabled": {
+                    "type": "boolean"
+                },
+                "turnstile": {
+                    "$ref": "#/definitions/internal_handler.turnstilePublic"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "updated_by": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.smtpPublic": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "from": {
+                    "type": "string"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "notify_to": {
+                    "type": "string"
+                },
+                "password": {
+                    "$ref": "#/definitions/internal_handler.secretState"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "timeout_ms": {
+                    "type": "integer"
+                },
+                "tls_mode": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.submitRequest": {
             "type": "object",
             "properties": {
-                "challenge_id": {
-                    "type": "string"
-                },
-                "challenge_nonce": {
-                    "type": "string"
-                },
                 "content": {
                     "type": "string"
                 },
@@ -2273,6 +2628,29 @@ const docTemplate = `{
             "properties": {
                 "token": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.turnstilePublic": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "hostnames": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "secret_key": {
+                    "$ref": "#/definitions/internal_handler.secretState"
+                },
+                "site_key": {
+                    "type": "string"
+                },
+                "timeout_ms": {
+                    "type": "integer"
                 }
             }
         }

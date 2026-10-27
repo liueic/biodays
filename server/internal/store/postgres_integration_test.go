@@ -29,7 +29,7 @@ func TestPostgresIntegration(t *testing.T) {
 		&model.Story{}, &model.Tag{}, &model.Dataset{},
 		&model.Feedback{}, &model.FeedbackEvent{}, &model.AdminSession{},
 		&model.SubscriptionToken{}, &model.MailOutbox{}, &model.AbuseBucket{},
-		&model.FeedbackChallenge{}, &model.FeedbackDeletion{},
+		&model.FeedbackDeletion{}, &model.SettingsAudit{},
 	))
 	require.NoError(t, st.Close())
 
@@ -81,36 +81,21 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("SubmissionTransactionWithChallenge", func(t *testing.T) {
+	t.Run("SettingsDocumentRoundTrip", func(t *testing.T) {
 		now := time.Now().UTC()
-		challenge := &model.FeedbackChallenge{
-			ID: "pg-challenge", IPHash: "ip", Salt: "salt", Signature: "signature",
-			Difficulty: 2, MinSeconds: 1, IssuedAt: now, ExpiresAt: now.Add(10 * time.Minute),
-		}
-		require.NoError(t, feedback.CreateChallenge(ctx, challenge))
-		require.NoError(t, feedback.CreateSubmission(ctx, CreateSubmissionInput{
-			Feedback: &model.Feedback{
-				ID: "pg-fb-1", RequestID: "pg-req-1", RequestBodyHash: "hash",
-				Kind: model.FeedbackKindTopic, Title: "标题", Content: "一段足够长的内容。",
-				Status: model.FeedbackStatusPending, Version: 1,
-				SubscriptionStatus: model.SubscriptionNone, CreatedAt: now, UpdatedAt: now,
-			},
-			ChallengeID: challenge.ID, Now: now,
-		}))
-		consumed, err := feedback.GetChallenge(ctx, challenge.ID)
+		require.NoError(t, feedback.SetAppSetting(ctx, "runtime_settings", `{"version":1}`, now))
+		value, err := feedback.GetAppSetting(ctx, "runtime_settings")
 		require.NoError(t, err)
-		require.NotNil(t, consumed.ConsumedAt)
+		require.Equal(t, `{"version":1}`, value)
 
-		err = feedback.CreateSubmission(ctx, CreateSubmissionInput{
-			Feedback: &model.Feedback{
-				ID: "pg-fb-2", RequestID: "pg-req-2", RequestBodyHash: "hash",
-				Kind: model.FeedbackKindTopic, Title: "标题", Content: "一段足够长的内容。",
-				Status: model.FeedbackStatusPending, Version: 1,
-				SubscriptionStatus: model.SubscriptionNone, CreatedAt: now, UpdatedAt: now,
-			},
-			ChallengeID: challenge.ID, Now: now,
-		})
-		require.ErrorIs(t, err, ErrChallengeConsumed)
+		record := &model.SettingsAudit{Revision: 1, Actor: "editor", Changes: `{"smtp.enabled":{"old":false,"new":true}}`, CreatedAt: now}
+		require.NoError(t, feedback.SaveSettingsDocument(ctx, "runtime_settings", `{"version":1,"revision":1}`, record, now))
+		value, err = feedback.GetAppSetting(ctx, "runtime_settings")
+		require.NoError(t, err)
+		require.Contains(t, value, `"revision":1`)
+		_, total, err := feedback.ListSettingsAudit(ctx, 1, 20)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, total)
 	})
 
 	t.Run("BackupUnsupported", func(t *testing.T) {

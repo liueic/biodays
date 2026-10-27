@@ -8,17 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"biodays/server/internal/antispam"
 	"biodays/server/internal/config"
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/model"
 	"biodays/server/internal/router"
 	"biodays/server/internal/service"
+	"biodays/server/internal/settings"
 	"biodays/server/internal/store"
 
 	"github.com/gin-gonic/gin"
@@ -39,7 +38,7 @@ func newFeedbackHarness(t *testing.T) *feedbackHarness {
 	return newFeedbackHarnessWithSettings(t, nil)
 }
 
-func newFeedbackHarnessWithSettings(t *testing.T, tweak func(*service.FeedbackSettings)) *feedbackHarness {
+func newFeedbackHarnessWithSettings(t *testing.T, tweak func(*service.EffectiveSettings)) *feedbackHarness {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	name := strings.ReplaceAll(t.Name(), "/", "_")
@@ -53,15 +52,18 @@ func newFeedbackHarnessWithSettings(t *testing.T, tweak func(*service.FeedbackSe
 
 	h := &feedbackHarness{store: feedbackStore, now: time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)}
 	h.secret = []byte("0123456789abcdef0123456789abcdef")
-	settings := service.FeedbackSettings{
+	values := service.EffectiveSettings{
 		Enabled: true, SubscriptionsEnabled: true, SMTPEnabled: true,
 		SiteURL: adminOrigin, NotifyTo: "admin@biodays.test",
-		SubmitHourly: 1000, SubmitDaily: 1000, ResendHourly: 1000, ResendDaily: 1000,
+		RateLimits: settings.RateLimitsGroup{
+			SubmitHourly: 1000, SubmitDaily: 1000, ResendHourly: 1000, ResendDaily: 1000,
+			ConfirmHourly: 1000, ConfirmDaily: 1000, ConfirmDailyGlobal: 1000, AdminMailHourly: 1000,
+		},
 	}
 	if tweak != nil {
-		tweak(&settings)
+		tweak(&values)
 	}
-	feedbackService := service.NewFeedbackService(feedbackStore, settings, h.secret, func() time.Time { return h.now })
+	feedbackService := service.NewFeedbackService(feedbackStore, service.StaticSettings(values), h.secret, func() time.Time { return h.now })
 	hash, err := bcrypt.GenerateFromPassword([]byte("correct-horse-123"), bcrypt.MinCost)
 	require.NoError(t, err)
 	adminService := service.NewAdminService(feedbackStore, service.AdminSettings{
@@ -264,10 +266,14 @@ func TestSubscriptionHTTPFlow(t *testing.T) {
 	// Queue a status notification, then unsubscribe through the HTTP API.
 	detail, err := h.store.GetFeedback(t.Context(), created.Data.ID)
 	require.NoError(t, err)
-	feedbackService := service.NewFeedbackService(h.store, service.FeedbackSettings{
+	feedbackService := service.NewFeedbackService(h.store, service.StaticSettings(service.EffectiveSettings{
 		Enabled: true, SubscriptionsEnabled: true, SMTPEnabled: true,
 		SiteURL: adminOrigin, NotifyTo: "admin@biodays.test",
-	}, h.secret, func() time.Time { return h.now })
+		RateLimits: settings.RateLimitsGroup{
+			SubmitHourly: 1000, SubmitDaily: 1000, ResendHourly: 1000, ResendDaily: 1000,
+			ConfirmHourly: 1000, ConfirmDaily: 1000, ConfirmDailyGlobal: 1000, AdminMailHourly: 1000,
+		},
+	}), h.secret, func() time.Time { return h.now })
 	_, err = feedbackService.UpdateFeedback(t.Context(), "editor", service.AdminUpdateInput{
 		ID: detail.ID, Version: detail.Version, Status: model.FeedbackStatusAccepted, NotifySubscriber: true,
 	})
@@ -360,46 +366,8 @@ func TestFeedbackContentTypeAndOrigin(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
 }
 
-func TestChallengeEndpointAndPowSubmission(t *testing.T) {
-	h := newFeedbackHarnessWithSettings(t, func(settings *service.FeedbackSettings) {
-		settings.Verification.PowEnabled = true
-		settings.Verification.PowDifficulty = 2
-		settings.Verification.PowMinSeconds = 1
-	})
-
-	rec := h.request(t, http.MethodPost, "/api/v1/feedback/challenge", "", nil)
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
-	var challenge struct {
-		Data struct {
-			ChallengeID string `json:"challenge_id"`
-			Salt        string `json:"salt"`
-			Difficulty  int    `json:"difficulty"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &challenge))
-	require.NotEmpty(t, challenge.Data.ChallengeID)
-
-	nonce := ""
-	for i := 0; ; i++ {
-		candidate := strconv.Itoa(i)
-		if antispam.VerifyPoW(challenge.Data.Salt, candidate, challenge.Data.Difficulty) {
-			nonce = candidate
-			break
-		}
-	}
-	h.now = h.now.Add(time.Second)
-	body := fmt.Sprintf(`{"request_id":"req-pow-http-1","kind":"topic","title":"想了解 GFP","content":"希望讲讲荧光蛋白怎样从水母研究走向实验室应用。","challenge_id":%q,"challenge_nonce":%q}`, challenge.Data.ChallengeID, nonce)
-	rec = h.request(t, http.MethodPost, "/api/v1/feedback", body, nil)
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
-
-	rec = h.request(t, http.MethodPost, "/api/v1/feedback/challenge", "", nil)
-	require.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestChallengeDisabled(t *testing.T) {
+func TestChallengeEndpointRemoved(t *testing.T) {
 	h := newFeedbackHarness(t)
 	rec := h.request(t, http.MethodPost, "/api/v1/feedback/challenge", "", nil)
 	require.Equal(t, http.StatusNotFound, rec.Code)
-	require.Contains(t, rec.Body.String(), "CHALLENGE_DISABLED")
 }

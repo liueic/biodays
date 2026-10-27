@@ -11,37 +11,50 @@ import (
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/model"
 	"biodays/server/internal/service"
+	"biodays/server/internal/settings"
 	"biodays/server/internal/store"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// mutableSource lets a test flip effective values mid-run, mimicking an
+// admin settings save landing between requests.
+type mutableSource struct{ values service.EffectiveSettings }
+
+func (m *mutableSource) Effective() service.EffectiveSettings { return m.values }
+
 type fixture struct {
 	service *service.FeedbackService
 	admin   *service.AdminService
 	store   *store.FeedbackStore
 	now     time.Time
+	values  service.EffectiveSettings
+	source  *mutableSource
 }
 
-func newFixture(t *testing.T, tweak func(*service.FeedbackSettings)) *fixture {
+func newFixture(t *testing.T, tweak func(*service.EffectiveSettings)) *fixture {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "feedback.db")
 	st, err := store.OpenFeedback(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, st.Close()) })
 
-	settings := service.FeedbackSettings{
+	values := service.EffectiveSettings{
 		Enabled: true, SubscriptionsEnabled: true, SMTPEnabled: true,
 		SiteURL: "https://biodays.test", NotifyTo: "admin@biodays.test",
-		SubmitHourly: 100, SubmitDaily: 100, ResendHourly: 100, ResendDaily: 100,
+		RateLimits: settings.RateLimitsGroup{
+			SubmitHourly: 100, SubmitDaily: 100, ResendHourly: 100, ResendDaily: 100,
+			ConfirmHourly: 100, ConfirmDaily: 100, ConfirmDailyGlobal: 100, AdminMailHourly: 100,
+		},
 	}
 	if tweak != nil {
-		tweak(&settings)
+		tweak(&values)
 	}
-	f := &fixture{store: st, now: time.Date(2026, 10, 24, 10, 0, 0, 0, time.UTC)}
+	f := &fixture{store: st, now: time.Date(2026, 10, 24, 10, 0, 0, 0, time.UTC), values: values}
+	f.source = &mutableSource{values: values}
 	secret := []byte("0123456789abcdef0123456789abcdef")
-	f.service = service.NewFeedbackService(st, settings, secret, func() time.Time { return f.now })
+	f.service = service.NewFeedbackService(st, f.source, secret, func() time.Time { return f.now })
 	hash, err := bcrypt.GenerateFromPassword([]byte("correct-horse-123"), bcrypt.MinCost)
 	require.NoError(t, err)
 	f.admin = service.NewAdminService(st, service.AdminSettings{
@@ -171,7 +184,7 @@ func TestSubmissionValidation(t *testing.T) {
 		})
 	}
 
-	noSMTP := newFixture(t, func(s *service.FeedbackSettings) { s.SMTPEnabled = false })
+	noSMTP := newFixture(t, func(s *service.EffectiveSettings) { s.SMTPEnabled = false })
 	_, err := noSMTP.submit(t, "req-no-smtp", func(in *service.SubmitInput) {
 		in.Email = "reader@example.com"
 		in.Subscribe = true
@@ -347,9 +360,9 @@ func TestExpiredAndInvalidTokens(t *testing.T) {
 }
 
 func TestSubmitRateLimit(t *testing.T) {
-	f := newFixture(t, func(s *service.FeedbackSettings) {
-		s.SubmitHourly = 1
-		s.SubmitDaily = 10
+	f := newFixture(t, func(s *service.EffectiveSettings) {
+		s.RateLimits.SubmitHourly = 1
+		s.RateLimits.SubmitDaily = 10
 	})
 	_, err := f.submit(t, "req-limit-0001", nil)
 	require.NoError(t, err)

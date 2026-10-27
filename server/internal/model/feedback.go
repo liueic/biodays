@@ -45,7 +45,6 @@ const (
 )
 
 const (
-	VerificationMethodPow       = "pow"
 	VerificationMethodTurnstile = "turnstile"
 	VerificationMethodNone      = "none"
 )
@@ -202,20 +201,9 @@ type AbuseBucket struct {
 	ExpiresAt time.Time `gorm:"not null;index:idx_abuse_expires"`
 }
 
-// FeedbackChallenge is a single-use proof-of-work challenge bound to one
-// client IP. Only HMACs are stored; the raw IP never reaches the database.
-type FeedbackChallenge struct {
-	ID         string     `gorm:"primaryKey;size:32"`
-	IPHash     string     `gorm:"not null;size:64;index:idx_feedback_challenges_ip_expires,priority:1"`
-	Salt       string     `gorm:"not null;size:64"`
-	Signature  string     `gorm:"not null;size:64"`
-	Difficulty int        `gorm:"not null;default:4"`
-	MinSeconds int        `gorm:"not null;default:3"`
-	IssuedAt   time.Time  `gorm:"not null"`
-	ExpiresAt  time.Time  `gorm:"not null;index:idx_feedback_challenges_ip_expires,priority:2;index:idx_feedback_challenges_expires"`
-	ConsumedAt *time.Time `gorm:"index"`
-	FeedbackID string     `gorm:"not null;size:32;default:''"`
-}
+// FeedbackChallenge was the proof-of-work challenge table. PoW has been
+// retired; the model stays out of the codebase and AutoMigrate no longer
+// manages the table, but existing rows are left in place harmlessly.
 
 // FeedbackDeletion is the minimal post-deletion audit record: no content and
 // no contact details.
@@ -224,4 +212,15 @@ type FeedbackDeletion struct {
 	FeedbackID string    `gorm:"not null;size:32;index"`
 	Actor      string    `gorm:"not null;size:32"`
 	CreatedAt  time.Time `gorm:"not null"`
+}
+
+// SettingsAudit records one admin save of the runtime settings document.
+// Changes is a JSON object of {field: {old, new}}; secret fields are masked
+// before this record is built, so neither plaintext nor ciphertext appears.
+type SettingsAudit struct {
+	ID        uint      `gorm:"primaryKey"`
+	Revision  int       `gorm:"not null;index"`
+	Actor     string    `gorm:"not null;size:64"`
+	Changes   string    `gorm:"type:text;not null"`
+	CreatedAt time.Time `gorm:"not null;index"`
 }

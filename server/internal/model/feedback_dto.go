@@ -20,9 +20,6 @@ type FeedbackLimits struct {
 }
 
 type VerificationOptionsDTO struct {
-	PowEnabled       bool   `json:"pow_enabled"`
-	PowDifficulty    int    `json:"pow_difficulty"`
-	PowMinSeconds    int    `json:"pow_min_seconds"`
 	TurnstileEnabled bool   `json:"turnstile_enabled"`
 	TurnstileSiteKey string `json:"turnstile_site_key,omitempty"`
 	AIAssisted       bool   `json:"ai_assisted"`
@@ -34,15 +31,6 @@ type FeedbackOptionsDTO struct {
 	Kinds                []FeedbackKindOption   `json:"kinds"`
 	Limits               FeedbackLimits         `json:"limits"`
 	Verification         VerificationOptionsDTO `json:"verification"`
-}
-
-type ChallengeDTO struct {
-	ChallengeID      string    `json:"challenge_id"`
-	Salt             string    `json:"salt"`
-	Difficulty       int       `json:"difficulty"`
-	MinSubmitSeconds int       `json:"min_submit_seconds"`
-	IssuedAt         time.Time `json:"issued_at"`
-	ExpiresAt        time.Time `json:"expires_at"`
 }
 
 type SubmitReceiptDTO struct {
@@ -127,12 +115,15 @@ type FeedbackDetailDTO struct {
 }
 
 type MailStatusDTO struct {
-	SMTPEnabled      bool             `json:"smtp_enabled"`
-	Configured       bool             `json:"configured"`
-	Missing          []string         `json:"missing"`
-	NotifyConfigured bool             `json:"notify_configured"`
-	Counts           map[string]int64 `json:"counts"`
-	RecentErrors     []MailTaskDTO    `json:"recent_errors"`
+	SMTPEnabled      bool     `json:"smtp_enabled"`
+	Configured       bool     `json:"configured"`
+	Missing          []string `json:"missing"`
+	NotifyConfigured bool     `json:"notify_configured"`
+	// Error explains why delivery is currently paused (disabled, incomplete
+	// config, or unreadable secret); empty when healthy.
+	Error        string           `json:"error,omitempty"`
+	Counts       map[string]int64 `json:"counts"`
+	RecentErrors []MailTaskDTO    `json:"recent_errors"`
 }
 
 func FeedbackListItem(fb Feedback) FeedbackListItemDTO {

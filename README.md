@@ -122,31 +122,11 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 | `BIODAYS_ADMIN_PASSWORD_HASH` | 空（可选） | 同上；提供时必须是合法 bcrypt 哈希，且与 `BIODAYS_ADMIN_USERNAME` 同时提供 |
 | `BIODAYS_ADMIN_SESSION_TTL` | `8h` | 管理员会话绝对有效期 |
 | `BIODAYS_ABUSE_KEY_SECRET` | 空（自动生成） | IP/邮箱 HMAC 限流键与令牌指纹密钥；留空时首次启动生成随机密钥并持久化到数据库；显式提供则需 ≥32 字节 |
-| `BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED` | `true` | 是否允许用户订阅；还需 SMTP 启用才展示订阅选项 |
-| `BIODAYS_SMTP_ENABLED` | `false` | 启用持久化邮件 worker；关闭时反馈仍保存、任务保留 |
-| `BIODAYS_SMTP_HOST` / `BIODAYS_SMTP_PORT` | 空 / `587` | 邮件服务商主机与端口 |
-| `BIODAYS_SMTP_TLS_MODE` | `starttls` | `starttls`（587）或 `implicit_tls`（465），禁止明文降级 |
-| `BIODAYS_SMTP_USERNAME` / `BIODAYS_SMTP_PASSWORD` | 空 | SMTP 认证账号；授权码只由部署环境注入 |
-| `BIODAYS_SMTP_FROM` | SMTP 启用时必填 | 站点固定发件地址，绝不使用用户邮箱作为 From |
-| `BIODAYS_FEEDBACK_NOTIFY_TO` | SMTP 启用时必填 | 管理员新反馈通知与测试邮件的唯一收件地址 |
-| `BIODAYS_SMTP_TIMEOUT` | `10s` | 连接与协议读写超时 |
-| `BIODAYS_FEEDBACK_SUBMIT_HOURLY` / `_DAILY` | `5` / `20` | 每 IP 投稿频控 |
-| `BIODAYS_FEEDBACK_RESEND_HOURLY` / `_DAILY` | `3` / `10` | 每收件人重发确认邮件频控；与首次确认共用全局日额度 |
-| `BIODAYS_FEEDBACK_CONFIRM_HOURLY` / `_DAILY` | `1` / `3` | 每收件邮箱首次确认邮件频控；重发另受 `RESEND` 限制 |
-| `BIODAYS_FEEDBACK_CONFIRM_DAILY_GLOBAL` | `100` | 全局确认邮件日上限，SMTP 配额兜底 |
-| `BIODAYS_FEEDBACK_ADMIN_MAIL_HOURLY` | `10` | 管理员逐条新反馈邮件小时上限；超出后只进后台收件箱 |
-| `BIODAYS_FEEDBACK_POW_ENABLED` | `true` | 自托管 SHA-256 工作量证明；大陆访客主验证路径 |
-| `BIODAYS_FEEDBACK_POW_DIFFICULTY` | `4` | 前导十六进制零个数，3–5 |
-| `BIODAYS_FEEDBACK_POW_TTL` | `10m` | 挑战有效期，1m–1h；绑定客户端 IP 且单次使用 |
-| `BIODAYS_FEEDBACK_POW_MIN_SECONDS` | `3` | 打开页面到允许提交的最少秒数 |
-| `BIODAYS_FEEDBACK_TURNSTILE_ENABLED` | `false` | 可选的 Turnstile；官方不支持中国大陆，默认关闭 |
-| `BIODAYS_TURNSTILE_SITE_KEY` / `_SECRET_KEY` | 启用时必填 | 公开 site key 经 options 下发；secret 仅运行时 |
-| `BIODAYS_TURNSTILE_HOSTNAMES` | 空 | 逗号分隔；为空时使用 `BIODAYS_SITE_URL` 的 host |
-| `BIODAYS_TURNSTILE_TIMEOUT` | `3s` | siteverify 超时，1–10s |
-| `BIODAYS_FEEDBACK_SPAM_ENABLED` | `true` | 规则评分与自动隔离总开关 |
-| `BIODAYS_FEEDBACK_SPAM_REVIEW_SCORE` / `_BLOCK_SCORE` | `30` / `70` | 0–29 正常、30–69 待复核、70–100 自动隔离 |
-| `BIODAYS_AI_SPAM_ENABLED` | `false` | 是否对“待复核”投稿调用 Workers AI；需要账号与令牌 |
-| `BIODAYS_CF_ACCOUNT_ID` / `BIODAYS_CF_API_TOKEN` | 空 | Workers AI 账号与仅运行时 API Token |
+| `BIODAYS_SETTINGS_ENC_KEY` | 空（推荐设置） | 后台保存密钥类设置（SMTP 密码 / Turnstile Secret / CF Token）的 AES-256-GCM 密钥，`openssl rand -base64 32`；密文存数据库、密钥只在这里 |
+
+**运行时设置（数据库优先，后台热生效）**：SMTP 全套（`BIODAYS_SMTP_*`、`BIODAYS_FEEDBACK_NOTIFY_TO`）、频控限额（`BIODAYS_FEEDBACK_SUBMIT/RESEND/CONFIRM/ADMIN_MAIL_*`）、订阅开关（`BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED`）、Turnstile（`BIODAYS_TURNSTILE_*`）、垃圾评分（`BIODAYS_FEEDBACK_SPAM_*`）与 Workers AI 复核（`BIODAYS_AI_SPAM_*`、`BIODAYS_CF_*`）这些环境变量只在**首次启动**时导入数据库 `runtime_settings` 文档；此后数据库值优先，请在 `/admin/settings`（站点设置）中修改，保存后立即生效、带 revision 乐观并发与审计记录，密钥加密存储、永不回显。修改 `.env` 中的同名变量不再生效。
+
+PoW 工作量证明（`BIODAYS_FEEDBACK_POW_*`）已于 2026-10 移除；大陆访客的人机防线由每 IP 频控 + 规则垃圾评分承担，均可在后台热调。
 | `BIODAYS_AI_SPAM_MODEL` | `@cf/cloudflare/clef-flash` | 模型 ID；切换模型只改此值 |
 | `BIODAYS_AI_SPAM_STYLE` | `decision` | `decision`（Clef 系列）或 `chat`（Qwen/GLM/Llama） |
 | `BIODAYS_AI_SPAM_TIMEOUT` | `2s` | AI 复核超时，1–10s；失败按 uncertain 放行 |
@@ -194,6 +174,13 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
 
    > **容易踩的坑**：`BIODAYS_SITE_URL` 必须是浏览器实际访问的 origin（`scheme://host[:port]`，不要带路径或结尾 `/`）。确认/退订链接、canonical、sitemap 和管理端 Origin 校验都依赖它。`BIODAYS_CORS_ORIGINS` 的 `*` 只作用于公开 API 跨域，管理端写请求始终只认 `BIODAYS_SITE_URL`（及 CORS 列表中显式列出的 origin）。
 
+4. **运行时设置与热生效**：SMTP、频控限额、Turnstile、垃圾评分、Workers AI 复核与订阅开关保存在数据库 `runtime_settings` 文档中，在 `/admin/settings` 修改后立即生效，无需重启容器。首次启动会把 `.env` 中同名变量的值导入数据库作为初始值，此后以数据库为准。
+
+   - **密钥加密**：设置 `BIODAYS_SETTINGS_ENC_KEY`（`openssl rand -base64 32`）后，SMTP 密码 / Turnstile Secret / CF Token 以 AES-256-GCM 密文落库，API 与页面永不回传，只显示「已配置」；未设置该密钥时这些字段无法保存（其余设置不受影响）。密钥丢失只需在后台重新录入密钥字段。
+   - **并发保护**：保存携带 `base_revision`，与他人修改冲突时返回 409，前端提示刷新后重试。
+   - **审计**：每次保存记录变更摘要（密钥显示 `••••`），可在设置页底部查看。
+   - **反滥用现状**：PoW 已移除；大陆访客依靠每 IP 频控 + 规则垃圾评分（含可选 Workers AI 复核），全部参数可在后台热调，被灌水时直接调低限额即可即时止损。
+
 3. 启动后端与前端，访问：
 
    - `/feedback`：匿名投稿、订阅状态回执与重发确认邮件；
@@ -201,7 +188,8 @@ Next.js 通过 `web/proxy.ts` 将 `/api/*`、`/swagger/*`、`/healthz` 和 `/rea
    - `/feedback/unsubscribe#token=…`：退订；
    - `/admin/login`：管理员登录；
    - `/admin/feedback`：Outlook Express 风格收件箱，列表与详情联动；
-   - `/admin/mail`：SMTP 配置、队列计数、最近错误、测试邮件与人工重试。
+   - `/admin/mail`：邮件队列计数、最近错误、测试邮件与人工重试；
+   - `/admin/settings`：站点设置——SMTP、频控限额、Turnstile、垃圾评分、Workers AI 复核与订阅开关，保存后**热生效**（无需重启），带 revision 并发保护与修改审计；密钥字段加密存储、永不回显。
 
 5. 需要用户订阅处理结果时，再启用 SMTP：
 

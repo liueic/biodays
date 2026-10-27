@@ -1,20 +1,5 @@
 basePath: /
 definitions:
-  biodays_server_internal_model.ChallengeDTO:
-    properties:
-      challenge_id:
-        type: string
-      difficulty:
-        type: integer
-      expires_at:
-        type: string
-      issued_at:
-        type: string
-      min_submit_seconds:
-        type: integer
-      salt:
-        type: string
-    type: object
   biodays_server_internal_model.FeedbackDetailDTO:
     properties:
       closed_at:
@@ -188,6 +173,11 @@ definitions:
           format: int64
           type: integer
         type: object
+      error:
+        description: |-
+          Error explains why delivery is currently paused (disabled, incomplete
+          config, or unreadable secret); empty when healthy.
+        type: string
       missing:
         items:
           type: string
@@ -336,12 +326,6 @@ definitions:
     properties:
       ai_assisted:
         type: boolean
-      pow_difficulty:
-        type: integer
-      pow_enabled:
-        type: boolean
-      pow_min_seconds:
-        type: integer
       turnstile_enabled:
         type: boolean
       turnstile_site_key:
@@ -369,6 +353,96 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  biodays_server_internal_settings.AISpamGroup:
+    properties:
+      account_id:
+        type: string
+      api_token:
+        description: encrypted; never returned
+        type: string
+      daily_limit:
+        type: integer
+      enabled:
+        type: boolean
+      max_chars:
+        type: integer
+      model:
+        type: string
+      style:
+        description: decision | chat
+        type: string
+      threshold:
+        type: number
+      timeout_ms:
+        type: integer
+    type: object
+  biodays_server_internal_settings.RateLimitsGroup:
+    properties:
+      admin_mail_hourly:
+        type: integer
+      confirm_daily:
+        type: integer
+      confirm_daily_global:
+        type: integer
+      confirm_hourly:
+        type: integer
+      resend_daily:
+        type: integer
+      resend_hourly:
+        type: integer
+      submit_daily:
+        type: integer
+      submit_hourly:
+        type: integer
+    type: object
+  biodays_server_internal_settings.SMTPGroup:
+    properties:
+      enabled:
+        type: boolean
+      from:
+        type: string
+      host:
+        type: string
+      notify_to:
+        type: string
+      password:
+        description: encrypted; never returned by the API
+        type: string
+      port:
+        type: integer
+      timeout_ms:
+        type: integer
+      tls_mode:
+        description: starttls | implicit_tls
+        type: string
+      username:
+        type: string
+    type: object
+  biodays_server_internal_settings.SpamGroup:
+    properties:
+      block_score:
+        type: integer
+      enabled:
+        type: boolean
+      review_score:
+        type: integer
+    type: object
+  biodays_server_internal_settings.TurnstileGroup:
+    properties:
+      enabled:
+        type: boolean
+      hostnames:
+        items:
+          type: string
+        type: array
+      secret_key:
+        description: encrypted; never returned
+        type: string
+      site_key:
+        type: string
+      timeout_ms:
+        type: integer
     type: object
   internal_handler.AcceptedDTO:
     properties:
@@ -450,11 +524,6 @@ definitions:
         $ref: '#/definitions/biodays_server_internal_model.FeedbackDetailDTO'
       meta:
         $ref: '#/definitions/internal_handler.AdminUpdateMeta'
-    type: object
-  internal_handler.ChallengeResponse:
-    properties:
-      data:
-        $ref: '#/definitions/biodays_server_internal_model.ChallengeDTO'
     type: object
   internal_handler.ErrorBody:
     properties:
@@ -538,6 +607,20 @@ definitions:
       data:
         $ref: '#/definitions/biodays_server_internal_model.Meta'
     type: object
+  internal_handler.SettingsAuditResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/internal_handler.settingsAuditDTO'
+        type: array
+      meta:
+        $ref: '#/definitions/internal_handler.ListMeta'
+    type: object
+  internal_handler.SettingsResponse:
+    properties:
+      data:
+        $ref: '#/definitions/internal_handler.settingsPublic'
+    type: object
   internal_handler.StoryListResponse:
     properties:
       data:
@@ -590,6 +673,27 @@ definitions:
       meta:
         $ref: '#/definitions/internal_handler.TodayMeta'
     type: object
+  internal_handler.aiSpamPublic:
+    properties:
+      account_id:
+        type: string
+      api_token:
+        $ref: '#/definitions/internal_handler.secretState'
+      daily_limit:
+        type: integer
+      enabled:
+        type: boolean
+      max_chars:
+        type: integer
+      model:
+        type: string
+      style:
+        type: string
+      threshold:
+        type: number
+      timeout_ms:
+        type: integer
+    type: object
   internal_handler.resendRequest:
     properties:
       email:
@@ -597,12 +701,93 @@ definitions:
       feedback_id:
         type: string
     type: object
+  internal_handler.secretState:
+    properties:
+      configured:
+        type: boolean
+      encrypted:
+        type: boolean
+      readable:
+        type: boolean
+    type: object
+  internal_handler.settingsAuditDTO:
+    properties:
+      actor:
+        type: string
+      changes:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      revision:
+        type: integer
+    type: object
+  internal_handler.settingsPatchRequest:
+    properties:
+      ai_spam:
+        $ref: '#/definitions/biodays_server_internal_settings.AISpamGroup'
+      base_revision:
+        type: integer
+      rate_limits:
+        $ref: '#/definitions/biodays_server_internal_settings.RateLimitsGroup'
+      smtp:
+        $ref: '#/definitions/biodays_server_internal_settings.SMTPGroup'
+      spam:
+        $ref: '#/definitions/biodays_server_internal_settings.SpamGroup'
+      subscriptions_enabled:
+        type: boolean
+      turnstile:
+        $ref: '#/definitions/biodays_server_internal_settings.TurnstileGroup'
+    type: object
+  internal_handler.settingsPublic:
+    properties:
+      ai_spam:
+        $ref: '#/definitions/internal_handler.aiSpamPublic'
+      clear_sentinel:
+        type: string
+      encryption_key_configured:
+        type: boolean
+      rate_limits:
+        $ref: '#/definitions/biodays_server_internal_settings.RateLimitsGroup'
+      revision:
+        type: integer
+      smtp:
+        $ref: '#/definitions/internal_handler.smtpPublic'
+      spam:
+        $ref: '#/definitions/biodays_server_internal_settings.SpamGroup'
+      subscriptions_enabled:
+        type: boolean
+      turnstile:
+        $ref: '#/definitions/internal_handler.turnstilePublic'
+      updated_at:
+        type: string
+      updated_by:
+        type: string
+    type: object
+  internal_handler.smtpPublic:
+    properties:
+      enabled:
+        type: boolean
+      from:
+        type: string
+      host:
+        type: string
+      notify_to:
+        type: string
+      password:
+        $ref: '#/definitions/internal_handler.secretState'
+      port:
+        type: integer
+      timeout_ms:
+        type: integer
+      tls_mode:
+        type: string
+      username:
+        type: string
+    type: object
   internal_handler.submitRequest:
     properties:
-      challenge_id:
-        type: string
-      challenge_nonce:
-        type: string
       content:
         type: string
       email:
@@ -631,6 +816,21 @@ definitions:
     properties:
       token:
         type: string
+    type: object
+  internal_handler.turnstilePublic:
+    properties:
+      enabled:
+        type: boolean
+      hostnames:
+        items:
+          type: string
+        type: array
+      secret_key:
+        $ref: '#/definitions/internal_handler.secretState'
+      site_key:
+        type: string
+      timeout_ms:
+        type: integer
     type: object
 info:
   contact: {}
@@ -919,6 +1119,82 @@ paths:
       summary: 当前管理员会话
       tags:
       - admin
+  /api/v1/admin/settings:
+    get:
+      description: 返回 SMTP、频控、Turnstile、垃圾评分与订阅开关的当前值；密钥字段只返回配置状态，永不回传内容。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.SettingsResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 运行时设置
+      tags:
+      - admin
+    patch:
+      consumes:
+      - application/json
+      description: 按 base_revision 做乐观并发；未提供的组不变。密钥字段留空表示不变，填 __clear__ 表示清除；保存后立即生效，无需重启。
+      parameters:
+      - description: 设置补丁
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.settingsPatchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.SettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 更新运行时设置
+      tags:
+      - admin
+  /api/v1/admin/settings/audit:
+    get:
+      description: 分页返回设置修改记录（新到旧）；密钥变更只显示掩码。
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量，最大 100
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.SettingsAuditResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/internal_handler.ErrorResponse'
+      summary: 设置修改审计
+      tags:
+      - admin
   /api/v1/admin/stories:
     get:
       description: 与公开列表相同的过滤参数，默认 summary 视图；需要管理员会话或 API Token。
@@ -1118,31 +1394,6 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.ErrorResponse'
       summary: 匿名提交反馈
-      tags:
-      - feedback
-  /api/v1/feedback/challenge:
-    post:
-      description: 返回一次性、绑定客户端 IP 的 SHA-256 工作量证明挑战。挑战在服务端存储，提交后单次消费。
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/internal_handler.ChallengeResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/internal_handler.ErrorResponse'
-        "429":
-          description: Too Many Requests
-          schema:
-            $ref: '#/definitions/internal_handler.ErrorResponse'
-        "503":
-          description: Service Unavailable
-          schema:
-            $ref: '#/definitions/internal_handler.ErrorResponse'
-      summary: 签发 PoW 挑战
       tags:
       - feedback
   /api/v1/feedback/options:

@@ -57,8 +57,8 @@ func newWorkerFixture(t *testing.T) *workerFixture {
 		now:    time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC),
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	f.worker = mailer.NewWorker(st, f.sender, mailer.NewRenderer("biodays", "https://biodays.test"),
-		logger, func() time.Time { return f.now }, []byte("0123456789abcdef0123456789abcdef"), "admin@biodays.test")
+	f.worker = mailer.NewWorker(st, func() mailer.Sender { return f.sender }, mailer.NewRenderer("biodays", "https://biodays.test"),
+		logger, func() time.Time { return f.now }, []byte("0123456789abcdef0123456789abcdef"))
 	return f
 }
 

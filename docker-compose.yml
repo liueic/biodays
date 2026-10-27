@@ -10,6 +10,10 @@
 # 配置透传：app 服务通过 env_file 读取 .env 的全部 BIODAYS_* 变量，
 # 只有下方 environment 里列出的镜像固定值和拼装值不可被 .env 覆盖。
 #
+# 运行时设置（SMTP、频控、反滥用、订阅开关）保存在数据库里，通过
+# /admin/settings 后台修改、保存即热生效；.env 中的同名变量仅作为
+# 首次启动的初始值。密钥类设置需要 .env 提供 BIODAYS_SETTINGS_ENC_KEY。
+#
 # 注意：.env 中的 bcrypt 哈希等含 $ 的值经 env_file 原样传入，无需转义；
 # 但下面 environment 里出现的 ${...} 仍会被 Compose 插值。
 #

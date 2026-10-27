@@ -33,7 +33,6 @@ import (
 	"syscall"
 	"time"
 
-	"biodays/server/internal/antispam"
 	"biodays/server/internal/config"
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/model"
@@ -41,6 +40,7 @@ import (
 	"biodays/server/internal/security"
 	"biodays/server/internal/seed"
 	"biodays/server/internal/service"
+	"biodays/server/internal/settings"
 	"biodays/server/internal/store"
 
 	"golang.org/x/term"
@@ -333,93 +333,61 @@ func startFeedback(cfg config.Config, logger *slog.Logger) (router.Deps, func())
 		os.Exit(1)
 	}
 
-	var turnstile antispam.TurnstileVerifier
-	if cfg.TurnstileEnabled {
-		hosts := cfg.TurnstileHostnames
-		if len(hosts) == 0 {
-			if parsed, err := url.Parse(cfg.SiteURL); err == nil && parsed.Hostname() != "" {
-				hosts = []string{parsed.Hostname()}
-			}
+	// Runtime settings manager: DB document wins, environment seeds first
+	// boot. Derived clients (SMTP sender, Turnstile, spam judge) are rebuilt
+	// on every save and travel with each snapshot.
+	seed := cfg.SettingsSeed()
+	if seed.Turnstile.Enabled && len(seed.Turnstile.Hostnames) == 0 {
+		if parsed, err := url.Parse(cfg.SiteURL); err == nil && parsed.Hostname() != "" {
+			seed.Turnstile.Hostnames = []string{parsed.Hostname()}
 		}
-		turnstile = antispam.NewTurnstileClient(antispam.TurnstileConfig{
-			SecretKey: cfg.TurnstileSecretKey, Hostnames: hosts, Timeout: cfg.TurnstileTimeout,
-		})
 	}
-
-	var (
-		judge      *antispam.Judge
-		classifier antispam.Classifier
-	)
-	if cfg.SpamEnabled {
-		if cfg.AISpamEnabled {
-			client, err := antispam.NewCloudflareClassifier(antispam.CloudflareConfig{
-				AccountID: cfg.CFAccountID, APIToken: cfg.CFAPIToken,
-				Model: cfg.AISpamModel, Style: cfg.AISpamStyle, Timeout: cfg.AISpamTimeout,
-			})
-			if err != nil {
-				logger.Error("configure workers ai spam classifier", "error", err)
-				os.Exit(1)
-			}
-			classifier = client
+	var encKey []byte
+	if strings.TrimSpace(cfg.SettingsEncKey) != "" {
+		parsed, keyErr := settings.ParseEncryptionKey(cfg.SettingsEncKey)
+		if keyErr != nil {
+			logger.Error("parse settings encryption key", "error", keyErr)
+			os.Exit(1)
 		}
-		judge = antispam.NewJudge(feedbackStore, secret, antispam.Settings{
-			Enabled: cfg.SpamEnabled, ReviewScore: cfg.SpamReviewScore, BlockScore: cfg.SpamBlockScore,
-			AIThreshold: cfg.AISpamThreshold, AIDailyLimit: cfg.AISpamDailyLimit,
-			AIMaxChars: cfg.AISpamMaxChars,
-		}, classifier, logger, time.Now)
+		encKey = parsed
+	} else if cfg.FeedbackEnabled {
+		logger.Warn("BIODAYS_SETTINGS_ENC_KEY is not set; secret settings (SMTP password, Turnstile secret, CF token) cannot be saved in the admin UI")
 	}
+	manager := settings.NewManager(feedbackStore, encKey, logger, time.Now)
+	if err := manager.Load(context.Background(), seed, feedbackStore); err != nil {
+		logger.Error("load runtime settings", "error", err)
+		os.Exit(1)
+	}
+	source := service.NewManagerSettingsSource(manager, cfg.SiteURL)
 
-	feedbackService := service.NewFeedbackService(feedbackStore, service.FeedbackSettings{
-		Enabled: cfg.FeedbackEnabled, SubscriptionsEnabled: cfg.SubscriptionsEnabled,
-		SMTPEnabled: cfg.SMTPEnabled, SiteURL: cfg.SiteURL, NotifyTo: cfg.FeedbackNotifyTo,
-		SMTPMissing:  cfg.MissingSMTPConfig(),
-		SubmitHourly: cfg.SubmitHourlyLimit, SubmitDaily: cfg.SubmitDailyLimit,
-		ResendHourly: cfg.ResendHourlyLimit, ResendDaily: cfg.ResendDailyLimit,
-		ConfirmHourly: cfg.ConfirmHourlyLimit, ConfirmDaily: cfg.ConfirmDailyLimit,
-		ConfirmDailyGlobal: cfg.ConfirmDailyGlobal, AdminMailHourly: cfg.AdminMailHourlyLimit,
-		Verification: service.VerificationSettings{
-			PowEnabled: cfg.PowEnabled, PowDifficulty: cfg.PowDifficulty, PowTTL: cfg.PowTTL,
-			PowMinSeconds: cfg.PowMinSeconds, TurnstileEnabled: cfg.TurnstileEnabled,
-			TurnstileSiteKey: cfg.TurnstileSiteKey, Turnstile: turnstile,
-		},
-		Spam: service.SpamSettings{
-			Enabled: cfg.SpamEnabled, AIAssisted: cfg.AISpamEnabled, Judge: judge,
-		},
-		Logger: logger,
-	}, secret, time.Now)
+	feedbackService := service.NewFeedbackService(feedbackStore, source, secret, time.Now)
 
 	deps := router.Deps{
 		Feedback:        feedbackStore,
 		FeedbackService: feedbackService,
 		AdminService:    adminService,
+		SettingsManager: manager,
 	}
 
+	// The worker always runs and asks the settings snapshot for its sender:
+	// SMTP disabled or misconfigured yields a paused sender and tasks stay
+	// queued, matching the previous no-worker behaviour.
+	worker := mailer.NewWorker(feedbackStore, manager.Sender,
+		mailer.NewRenderer("biodays", cfg.SiteURL), logger, time.Now, secret)
 	var (
+		workerCtx    context.Context
 		workerCancel context.CancelFunc
-		workerDone   chan struct{}
+		workerDone   = make(chan struct{})
 	)
-	if cfg.SMTPEnabled {
-		sender, err := mailer.NewSMTPSender(mailer.SMTPConfig{
-			Host: cfg.SMTPHost, Port: cfg.SMTPPort, TLSMode: cfg.SMTPTLSMode,
-			Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
-			From: cfg.SMTPFrom, Timeout: cfg.SMTPTimeout,
-		})
-		if err != nil {
-			logger.Error("configure SMTP", "error", err)
-			os.Exit(1)
-		}
-		worker := mailer.NewWorker(feedbackStore, sender,
-			mailer.NewRenderer("biodays", cfg.SiteURL), logger, time.Now, secret, cfg.FeedbackNotifyTo)
-		var ctx context.Context
-		ctx, workerCancel = context.WithCancel(context.Background())
-		workerDone = make(chan struct{})
-		go func() {
-			defer close(workerDone)
-			worker.Run(ctx)
-		}()
-		logger.Info("mail worker started", "host", cfg.SMTPHost, "tls", cfg.SMTPTLSMode)
+	workerCtx, workerCancel = context.WithCancel(context.Background())
+	go func() {
+		defer close(workerDone)
+		worker.Run(workerCtx)
+	}()
+	if manager.Snapshot().Document.SMTP.Enabled {
+		logger.Info("mail worker started", "host", manager.Snapshot().Document.SMTP.Host, "tls", manager.Snapshot().Document.SMTP.TLSMode)
 	} else {
-		logger.Warn("SMTP is disabled; feedback is saved but mail tasks stay queued")
+		logger.Warn("SMTP is disabled; feedback is saved but mail tasks stay queued (enable it in /admin/settings)")
 	}
 
 	stop := func() {
@@ -632,8 +600,8 @@ func runCleanup() {
 		logger.Error("cleanup failed", "error", err)
 		os.Exit(1)
 	}
-	fmt.Printf("sessions=%d confirm_tokens=%d abuse_buckets=%d challenges=%d sent_payloads=%d contacts=%d tokens=%d\n",
-		report.Sessions, report.ConfirmTokens, report.AbuseBuckets, report.Challenges, report.SentOutbox,
+	fmt.Printf("sessions=%d confirm_tokens=%d abuse_buckets=%d sent_payloads=%d contacts=%d tokens=%d\n",
+		report.Sessions, report.ConfirmTokens, report.AbuseBuckets, report.SentOutbox,
 		report.ContactScrubbed, report.TokensInvalidated)
 }
 

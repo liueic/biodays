@@ -8,8 +8,15 @@ import (
 
 	"biodays/server/internal/model"
 	"biodays/server/internal/security"
-	"biodays/server/internal/store"
 )
+
+// JudgeStore is the slice of FeedbackStore the Judge needs, as an interface
+// so the settings manager can rebuild Judges without import cycles.
+type JudgeStore interface {
+	CountFeedbackByContentHash(ctx context.Context, hash string, since time.Time) (int64, error)
+	CountFeedbackByEmailDomain(ctx context.Context, domain string, since time.Time) (int64, error)
+	ConsumeRateLimit(ctx context.Context, keyHash string, windowStart, expiresAt time.Time, limit int) (bool, error)
+}
 
 type Settings struct {
 	Enabled      bool
@@ -40,7 +47,7 @@ type Decision struct {
 }
 
 type Judge struct {
-	store      *store.FeedbackStore
+	store      JudgeStore
 	secret     []byte
 	settings   Settings
 	classifier Classifier
@@ -48,7 +55,7 @@ type Judge struct {
 	now        func() time.Time
 }
 
-func NewJudge(st *store.FeedbackStore, secret []byte, settings Settings, classifier Classifier, logger *slog.Logger, now func() time.Time) *Judge {
+func NewJudge(st JudgeStore, secret []byte, settings Settings, classifier Classifier, logger *slog.Logger, now func() time.Time) *Judge {
 	if now == nil {
 		now = time.Now
 	}

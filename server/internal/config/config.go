@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"biodays/server/internal/settings"
+
 	"github.com/caarlos0/env/v11"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,26 +31,26 @@ type Config struct {
 	LogLevel       string   `env:"BIODAYS_LOG_LEVEL" envDefault:"info"`
 	SiteURL        string   `env:"BIODAYS_SITE_URL" envDefault:"http://localhost:3000"`
 
-	FeedbackEnabled      bool          `env:"BIODAYS_FEEDBACK_ENABLED" envDefault:"false"`
-	FeedbackDBPath       string        `env:"BIODAYS_FEEDBACK_DB_PATH" envDefault:"./feedback.db"`
-	AdminUsername        string        `env:"BIODAYS_ADMIN_USERNAME"`
-	AdminPasswordHash    string        `env:"BIODAYS_ADMIN_PASSWORD_HASH"`
-	AdminSessionTTL      time.Duration `env:"BIODAYS_ADMIN_SESSION_TTL" envDefault:"8h"`
-	AbuseKeySecret       string        `env:"BIODAYS_ABUSE_KEY_SECRET"`
-	SubscriptionsEnabled bool          `env:"BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED" envDefault:"true"`
-	SubmitHourlyLimit    int           `env:"BIODAYS_FEEDBACK_SUBMIT_HOURLY" envDefault:"5"`
-	SubmitDailyLimit     int           `env:"BIODAYS_FEEDBACK_SUBMIT_DAILY" envDefault:"20"`
-	ResendHourlyLimit    int           `env:"BIODAYS_FEEDBACK_RESEND_HOURLY" envDefault:"3"`
-	ResendDailyLimit     int           `env:"BIODAYS_FEEDBACK_RESEND_DAILY" envDefault:"10"`
+	FeedbackEnabled   bool          `env:"BIODAYS_FEEDBACK_ENABLED" envDefault:"false"`
+	FeedbackDBPath    string        `env:"BIODAYS_FEEDBACK_DB_PATH" envDefault:"./feedback.db"`
+	AdminUsername     string        `env:"BIODAYS_ADMIN_USERNAME"`
+	AdminPasswordHash string        `env:"BIODAYS_ADMIN_PASSWORD_HASH"`
+	AdminSessionTTL   time.Duration `env:"BIODAYS_ADMIN_SESSION_TTL" envDefault:"8h"`
+	AbuseKeySecret    string        `env:"BIODAYS_ABUSE_KEY_SECRET"`
+	// SettingsEncKey (base64, 32 bytes) enables AES-256-GCM storage of secret
+	// settings (SMTP password, Turnstile secret, CF API token). Without it
+	// those fields cannot be saved in the admin UI.
+	SettingsEncKey       string `env:"BIODAYS_SETTINGS_ENC_KEY"`
+	SubscriptionsEnabled bool   `env:"BIODAYS_FEEDBACK_SUBSCRIPTIONS_ENABLED" envDefault:"true"`
+	SubmitHourlyLimit    int    `env:"BIODAYS_FEEDBACK_SUBMIT_HOURLY" envDefault:"5"`
+	SubmitDailyLimit     int    `env:"BIODAYS_FEEDBACK_SUBMIT_DAILY" envDefault:"20"`
+	ResendHourlyLimit    int    `env:"BIODAYS_FEEDBACK_RESEND_HOURLY" envDefault:"3"`
+	ResendDailyLimit     int    `env:"BIODAYS_FEEDBACK_RESEND_DAILY" envDefault:"10"`
 
 	ConfirmHourlyLimit   int           `env:"BIODAYS_FEEDBACK_CONFIRM_HOURLY" envDefault:"1"`
 	ConfirmDailyLimit    int           `env:"BIODAYS_FEEDBACK_CONFIRM_DAILY" envDefault:"3"`
 	ConfirmDailyGlobal   int           `env:"BIODAYS_FEEDBACK_CONFIRM_DAILY_GLOBAL" envDefault:"100"`
 	AdminMailHourlyLimit int           `env:"BIODAYS_FEEDBACK_ADMIN_MAIL_HOURLY" envDefault:"10"`
-	PowEnabled           bool          `env:"BIODAYS_FEEDBACK_POW_ENABLED" envDefault:"true"`
-	PowDifficulty        int           `env:"BIODAYS_FEEDBACK_POW_DIFFICULTY" envDefault:"4"`
-	PowTTL               time.Duration `env:"BIODAYS_FEEDBACK_POW_TTL" envDefault:"10m"`
-	PowMinSeconds        int           `env:"BIODAYS_FEEDBACK_POW_MIN_SECONDS" envDefault:"3"`
 	TurnstileEnabled     bool          `env:"BIODAYS_FEEDBACK_TURNSTILE_ENABLED" envDefault:"false"`
 	TurnstileSiteKey     string        `env:"BIODAYS_TURNSTILE_SITE_KEY"`
 	TurnstileSecretKey   string        `env:"BIODAYS_TURNSTILE_SECRET_KEY"`
@@ -211,6 +213,10 @@ func normalizeSiteURL(cfg *Config) error {
 	return nil
 }
 
+// validateFeedbackConfig checks only the bootstrap-level feedback settings.
+// Runtime groups (SMTP, Turnstile, spam, AI) are validated by
+// settings.Validate when the seed document is built; a pre-existing
+// database document always wins over environment values anyway.
 func validateFeedbackConfig(cfg Config) error {
 	if !cfg.FeedbackEnabled && !cfg.SMTPEnabled {
 		return nil
@@ -240,73 +246,49 @@ func validateFeedbackConfig(cfg Config) error {
 		if cfg.AdminSessionTTL <= 0 {
 			return fmt.Errorf("BIODAYS_ADMIN_SESSION_TTL must be positive")
 		}
-		if cfg.SubmitHourlyLimit <= 0 || cfg.SubmitDailyLimit <= 0 || cfg.ResendHourlyLimit <= 0 || cfg.ResendDailyLimit <= 0 {
-			return fmt.Errorf("feedback rate limits must be positive")
-		}
-		if cfg.ConfirmHourlyLimit <= 0 || cfg.ConfirmDailyLimit <= 0 || cfg.ConfirmDailyGlobal <= 0 || cfg.AdminMailHourlyLimit <= 0 {
-			return fmt.Errorf("feedback mail limits must be positive")
-		}
-		if cfg.SpamReviewScore < 1 || cfg.SpamBlockScore < 50 || cfg.SpamBlockScore > 100 || cfg.SpamReviewScore >= cfg.SpamBlockScore {
-			return fmt.Errorf("feedback spam score thresholds are invalid")
-		}
-		if cfg.PowEnabled {
-			if cfg.PowDifficulty < 3 || cfg.PowDifficulty > 5 {
-				return fmt.Errorf("BIODAYS_FEEDBACK_POW_DIFFICULTY must be between 3 and 5")
-			}
-			if cfg.PowTTL < time.Minute || cfg.PowTTL > time.Hour {
-				return fmt.Errorf("BIODAYS_FEEDBACK_POW_TTL must be between 1m and 1h")
-			}
-			if cfg.PowMinSeconds < 0 || cfg.PowMinSeconds > 30 {
-				return fmt.Errorf("BIODAYS_FEEDBACK_POW_MIN_SECONDS must be between 0 and 30")
-			}
-		}
-		if cfg.TurnstileEnabled {
-			if strings.TrimSpace(cfg.TurnstileSiteKey) == "" || strings.TrimSpace(cfg.TurnstileSecretKey) == "" {
-				return fmt.Errorf("Turnstile is enabled but BIODAYS_TURNSTILE_SITE_KEY or BIODAYS_TURNSTILE_SECRET_KEY is missing")
-			}
-			if cfg.TurnstileTimeout < time.Second || cfg.TurnstileTimeout > 10*time.Second {
-				return fmt.Errorf("BIODAYS_TURNSTILE_TIMEOUT must be between 1s and 10s")
-			}
-		}
-		if cfg.AISpamEnabled {
-			if !cfg.SpamEnabled {
-				return fmt.Errorf("BIODAYS_AI_SPAM_ENABLED requires BIODAYS_FEEDBACK_SPAM_ENABLED=true")
-			}
-			if strings.TrimSpace(cfg.CFAccountID) == "" || strings.TrimSpace(cfg.CFAPIToken) == "" || strings.TrimSpace(cfg.AISpamModel) == "" {
-				return fmt.Errorf("AI spam classification is enabled but Cloudflare account ID, API token, or model is missing")
-			}
-			if cfg.AISpamStyle != "decision" && cfg.AISpamStyle != "chat" {
-				return fmt.Errorf("BIODAYS_AI_SPAM_STYLE must be decision or chat")
-			}
-			if cfg.AISpamTimeout < time.Second || cfg.AISpamTimeout > 10*time.Second {
-				return fmt.Errorf("BIODAYS_AI_SPAM_TIMEOUT must be between 1s and 10s")
-			}
-			if cfg.AISpamThreshold < 0.5 || cfg.AISpamThreshold > 1 {
-				return fmt.Errorf("BIODAYS_AI_SPAM_THRESHOLD must be between 0.5 and 1")
-			}
-			if cfg.AISpamDailyLimit <= 0 || cfg.AISpamDailyLimit > 10000 {
-				return fmt.Errorf("BIODAYS_AI_SPAM_DAILY_LIMIT must be between 1 and 10000")
-			}
-			if cfg.AISpamMaxChars < 500 || cfg.AISpamMaxChars > 8000 {
-				return fmt.Errorf("BIODAYS_AI_SPAM_MAX_CHARS must be between 500 and 8000")
-			}
-		}
 	}
-	if cfg.SMTPEnabled {
-		if missing := cfg.MissingSMTPConfig(); len(missing) > 0 {
-			return fmt.Errorf("SMTP is enabled but missing: %s", strings.Join(missing, ", "))
-		}
-		if cfg.SMTPPort < 1 || cfg.SMTPPort > 65535 {
-			return fmt.Errorf("BIODAYS_SMTP_PORT must be between 1 and 65535")
-		}
-		if cfg.SMTPTimeout <= 0 {
-			return fmt.Errorf("BIODAYS_SMTP_TIMEOUT must be positive")
-		}
-		if cfg.SMTPUsername != "" && cfg.SMTPPassword == "" {
-			return fmt.Errorf("BIODAYS_SMTP_PASSWORD is required when BIODAYS_SMTP_USERNAME is set")
+	if strings.TrimSpace(cfg.SettingsEncKey) != "" {
+		if _, err := settings.ParseEncryptionKey(cfg.SettingsEncKey); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// SettingsSeed builds the first-boot runtime settings document from the
+// effective environment values. Secrets are carried as plaintext here; the
+// manager encrypts (or drops) them before the first persist.
+func (c Config) SettingsSeed() settings.Document {
+	return settings.Document{
+		Version:       settings.DocumentVersion,
+		Subscriptions: c.SubscriptionsEnabled,
+		SMTP: settings.SMTPGroup{
+			Enabled: c.SMTPEnabled, Host: c.SMTPHost, Port: c.SMTPPort,
+			TLSMode: c.SMTPTLSMode, Username: c.SMTPUsername, Password: c.SMTPPassword,
+			From: c.SMTPFrom, NotifyTo: c.FeedbackNotifyTo,
+			TimeoutMS: int(c.SMTPTimeout / time.Millisecond),
+		},
+		RateLimits: settings.RateLimitsGroup{
+			SubmitHourly: c.SubmitHourlyLimit, SubmitDaily: c.SubmitDailyLimit,
+			ResendHourly: c.ResendHourlyLimit, ResendDaily: c.ResendDailyLimit,
+			ConfirmHourly: c.ConfirmHourlyLimit, ConfirmDaily: c.ConfirmDailyLimit,
+			ConfirmDailyGlobal: c.ConfirmDailyGlobal, AdminMailHourly: c.AdminMailHourlyLimit,
+		},
+		Turnstile: settings.TurnstileGroup{
+			Enabled: c.TurnstileEnabled, SiteKey: c.TurnstileSiteKey,
+			SecretKey: c.TurnstileSecretKey, Hostnames: c.TurnstileHostnames,
+			TimeoutMS: int(c.TurnstileTimeout / time.Millisecond),
+		},
+		Spam: settings.SpamGroup{
+			Enabled: c.SpamEnabled, ReviewScore: c.SpamReviewScore, BlockScore: c.SpamBlockScore,
+		},
+		AISpam: settings.AISpamGroup{
+			Enabled: c.AISpamEnabled, AccountID: c.CFAccountID, APIToken: c.CFAPIToken,
+			Model: c.AISpamModel, Style: c.AISpamStyle,
+			TimeoutMS: int(c.AISpamTimeout / time.Millisecond), Threshold: c.AISpamThreshold,
+			DailyLimit: c.AISpamDailyLimit, MaxChars: c.AISpamMaxChars,
+		},
+	}
 }
 
 // MissingSMTPConfig lists the required values that are absent. SMTP reachability

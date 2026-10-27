@@ -96,6 +96,7 @@ export type MailStatus = {
   configured: boolean;
   missing: string[];
   notify_configured: boolean;
+  error?: string;
   counts: Record<string, number>;
   recent_errors: MailTask[];
 };
@@ -315,4 +316,119 @@ export async function patchStory(
 
 export async function deleteStory(id: string): Promise<void> {
   await request(`/admin/stories/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// ── 运行时设置 ────────────────────────────────────────────────────────────
+
+export type SecretState = {
+  configured: boolean;
+  encrypted: boolean;
+  readable: boolean;
+};
+
+export type SMTPSettings = {
+  enabled: boolean;
+  host: string;
+  port: number;
+  tls_mode: "starttls" | "implicit_tls";
+  username: string;
+  from: string;
+  notify_to: string;
+  timeout_ms: number;
+  password: SecretState;
+};
+
+export type TurnstileSettings = {
+  enabled: boolean;
+  site_key: string;
+  hostnames: string[];
+  timeout_ms: number;
+  secret_key: SecretState;
+};
+
+export type SpamSettings = {
+  enabled: boolean;
+  review_score: number;
+  block_score: number;
+};
+
+export type AISpamSettings = {
+  enabled: boolean;
+  account_id: string;
+  model: string;
+  style: "decision" | "chat";
+  timeout_ms: number;
+  threshold: number;
+  daily_limit: number;
+  max_chars: number;
+  api_token: SecretState;
+};
+
+export type RateLimitSettings = {
+  submit_hourly: number;
+  submit_daily: number;
+  resend_hourly: number;
+  resend_daily: number;
+  confirm_hourly: number;
+  confirm_daily: number;
+  confirm_daily_global: number;
+  admin_mail_hourly: number;
+};
+
+export type RuntimeSettings = {
+  revision: number;
+  updated_at: string;
+  updated_by: string;
+  encryption_key_configured: boolean;
+  clear_sentinel: string;
+  subscriptions_enabled: boolean;
+  smtp: SMTPSettings;
+  rate_limits: RateLimitSettings;
+  turnstile: TurnstileSettings;
+  spam: SpamSettings;
+  ai_spam: AISpamSettings;
+};
+
+export type SMTPPatch = Omit<SMTPSettings, "password"> & { password?: string };
+export type TurnstilePatch = Omit<TurnstileSettings, "secret_key" | "hostnames"> & {
+  secret_key?: string;
+  hostnames?: string[];
+};
+export type AISpamPatch = Omit<AISpamSettings, "api_token"> & { api_token?: string };
+
+export type SettingsPatch = {
+  base_revision: number;
+  subscriptions_enabled?: boolean;
+  smtp?: SMTPPatch;
+  rate_limits?: RateLimitSettings;
+  turnstile?: TurnstilePatch;
+  spam?: SpamSettings;
+  ai_spam?: AISpamPatch;
+};
+
+export type SettingsAuditRecord = {
+  id: number;
+  revision: number;
+  actor: string;
+  changes: string;
+  created_at: string;
+};
+
+export function getSettings(): Promise<{ data: RuntimeSettings }> {
+  return request("/admin/settings");
+}
+
+export async function updateSettings(patch: SettingsPatch): Promise<{ data: RuntimeSettings }> {
+  return request("/admin/settings", { method: "PATCH", body: JSON.stringify(patch) });
+}
+
+export function listSettingsAudit(params: {
+  page?: number;
+  pageSize?: number;
+}): Promise<{ data: SettingsAuditRecord[]; meta: PageMeta }> {
+  const search = new URLSearchParams();
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("page_size", String(params.pageSize));
+  const query = search.toString();
+  return request(`/admin/settings/audit${query ? `?${query}` : ""}`);
 }

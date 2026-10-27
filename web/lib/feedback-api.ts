@@ -1,9 +1,6 @@
 export type FeedbackKind = "topic" | "resource" | "feature" | "issue";
 
 export type VerificationOptions = {
-  pow_enabled: boolean;
-  pow_difficulty: number;
-  pow_min_seconds: number;
   turnstile_enabled: boolean;
   turnstile_site_key?: string;
   ai_assisted: boolean;
@@ -22,15 +19,6 @@ export type FeedbackOptions = {
     source_url_max: number;
   };
   verification?: VerificationOptions;
-};
-
-export type PowChallenge = {
-  challenge_id: string;
-  salt: string;
-  difficulty: number;
-  min_submit_seconds: number;
-  issued_at: string;
-  expires_at: string;
 };
 
 export type ConfirmationEmailState = "none" | "queued" | "deferred";
@@ -59,8 +47,6 @@ export type SubmitFeedbackInput = {
   email?: string;
   subscribe_updates: boolean;
   website?: string;
-  challenge_id?: string;
-  challenge_nonce?: string;
   turnstile_token?: string;
 };
 
@@ -133,14 +119,6 @@ export function newRequestID(): string {
     }
   }
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export async function fetchPowChallenge(): Promise<PowChallenge> {
-  const response = await request<{ data: PowChallenge }>("/feedback/challenge", {
-    method: "POST",
-    body: "{}",
-  });
-  return response.data;
 }
 
 export async function submitFeedback(input: SubmitFeedbackInput): Promise<FeedbackReceipt> {

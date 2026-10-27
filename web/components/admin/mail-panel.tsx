@@ -101,6 +101,9 @@ export function MailPanel() {
         <Button as={Link} href="/admin/feedback" className="px-3">
           ← 收件箱
         </Button>
+        <Button as={Link} href="/admin/settings" className="px-3">
+          SMTP 设置
+        </Button>
         <Button type="button" className="px-3" onClick={() => setRefresh((value) => value + 1)}>
           刷新
         </Button>
@@ -126,9 +129,14 @@ export function MailPanel() {
           </div>
           {!status.smtp_enabled && (
             <p className="mt-2 text-[#7a4b00]">
-              邮件发送暂停。反馈仍可保存，管理员通知与确认任务会保留在队列中。
+              邮件发送暂停。反馈仍可保存，管理员通知与确认任务会保留在队列中。可在
+              <Link href="/admin/settings" className="underline">
+                站点设置
+              </Link>
+              中启用并配置 SMTP。
             </p>
           )}
+          {status.error && <p className="mt-2 text-[#7a0000]">发送暂停原因：{status.error}</p>}
           {status.missing.length > 0 && (
             <p className="mt-2 text-[#7a0000]">缺少配置：{status.missing.join("、")}</p>
           )}

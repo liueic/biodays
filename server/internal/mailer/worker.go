@@ -27,30 +27,30 @@ type Sender interface {
 }
 
 // Worker drains mail_outbox in-process. One worker is enough: leases guard
-// against duplicate claims across restarts.
+// against duplicate claims across restarts. The sender is resolved through
+// the senderFn on every task so admin SMTP changes apply without a restart;
+// a paused sender keeps tasks pending instead of failing them.
 type Worker struct {
 	store       *store.FeedbackStore
-	sender      Sender
+	senderFn    func() Sender
 	renderer    Renderer
 	logger      *slog.Logger
 	now         func() time.Time
 	interval    time.Duration
 	lease       time.Duration
 	abuseSecret []byte
-	notifyTo    string
 }
 
-func NewWorker(st *store.FeedbackStore, sender Sender, renderer Renderer, logger *slog.Logger, now func() time.Time, abuseSecret []byte, notifyTo string) *Worker {
+func NewWorker(st *store.FeedbackStore, senderFn func() Sender, renderer Renderer, logger *slog.Logger, now func() time.Time, abuseSecret []byte) *Worker {
 	return &Worker{
 		store:       st,
-		sender:      sender,
+		senderFn:    senderFn,
 		renderer:    renderer,
 		logger:      logger,
 		now:         now,
 		interval:    15 * time.Second,
 		lease:       2 * time.Minute,
 		abuseSecret: abuseSecret,
-		notifyTo:    notifyTo,
 	}
 }
 
@@ -58,9 +58,6 @@ func NewWorker(st *store.FeedbackStore, sender Sender, renderer Renderer, logger
 func (w *Worker) Run(ctx context.Context) {
 	if _, err := w.store.RecoverExpiredLeases(ctx, w.now()); err != nil {
 		w.logger.Error("recover mail leases", "error", err)
-	}
-	if _, err := w.store.BackfillOutboxRecipient(ctx, model.MailTypeAdminNewFeedback, w.notifyTo, w.now()); err != nil {
-		w.logger.Error("backfill admin mail recipient", "error", err)
 	}
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
@@ -151,7 +148,16 @@ func (w *Worker) process(ctx context.Context, task *model.MailOutbox) bool {
 	}
 	msg.To = task.Recipient
 
-	if err := w.sender.Send(ctx, msg); err != nil {
+	if err := w.senderFn().Send(ctx, msg); err != nil {
+		if errors.Is(err, ErrMailPaused) {
+			// Park the task as pending; the next tick retries once the admin
+			// fixes or enables SMTP. Attempts are not consumed by pausing.
+			w.logger.Warn("mail delivery paused", "task", task.ID)
+			if storeErr := w.store.RetryOutboxLater(ctx, task.ID, err.Error(), task.Attempts, now, now); storeErr != nil {
+				w.logger.Error("park paused mail", "task", task.ID, "error", storeErr)
+			}
+			return false
+		}
 		w.handleSendError(ctx, task, err, now)
 		return false
 	}

@@ -15,15 +15,13 @@ import (
 )
 
 var (
-	ErrFeedbackNotFound  = errors.New("feedback not found")
-	ErrVersionConflict   = errors.New("feedback version conflict")
-	ErrRequestConflict   = errors.New("request id already used with different content")
-	ErrTokenInvalid      = errors.New("token invalid")
-	ErrTokenExpired      = errors.New("token expired")
-	ErrTokenConsumed     = errors.New("token already used")
-	ErrOutboxNotFound    = errors.New("mail task not found")
-	ErrChallengeNotFound = errors.New("challenge not found")
-	ErrChallengeConsumed = errors.New("challenge already consumed")
+	ErrFeedbackNotFound = errors.New("feedback not found")
+	ErrVersionConflict  = errors.New("feedback version conflict")
+	ErrRequestConflict  = errors.New("request id already used with different content")
+	ErrTokenInvalid     = errors.New("token invalid")
+	ErrTokenExpired     = errors.New("token expired")
+	ErrTokenConsumed    = errors.New("token already used")
+	ErrOutboxNotFound   = errors.New("mail task not found")
 )
 
 // FeedbackStore owns the feedback tables (submissions, sessions, tokens, mail).
@@ -75,8 +73,8 @@ func newFeedbackStore(db *gorm.DB) (*FeedbackStore, error) {
 	if err := s.db.AutoMigrate(
 		&model.Feedback{}, &model.FeedbackEvent{}, &model.AdminSession{},
 		&model.SubscriptionToken{}, &model.MailOutbox{}, &model.AbuseBucket{},
-		&model.FeedbackChallenge{}, &model.FeedbackDeletion{},
-		&model.AdminUser{}, &model.AppSetting{},
+		&model.FeedbackDeletion{},
+		&model.AdminUser{}, &model.AppSetting{}, &model.SettingsAudit{},
 	); err != nil {
 		return nil, err
 	}
@@ -135,30 +133,17 @@ func (s *FeedbackStore) BackupTo(ctx context.Context, path string) error {
 }
 
 type CreateSubmissionInput struct {
-	Feedback    *model.Feedback
-	Event       *model.FeedbackEvent
-	Tokens      []model.SubscriptionToken
-	Outbox      []model.MailOutbox
-	ChallengeID string
-	Now         time.Time
+	Feedback *model.Feedback
+	Event    *model.FeedbackEvent
+	Tokens   []model.SubscriptionToken
+	Outbox   []model.MailOutbox
+	Now      time.Time
 }
 
 // CreateSubmission writes the feedback, event, tokens and mail jobs in one
 // transaction. SMTP is never touched here.
 func (s *FeedbackStore) CreateSubmission(ctx context.Context, in CreateSubmissionInput) error {
-	now := in.Now.UTC()
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if in.ChallengeID != "" {
-			result := tx.Model(&model.FeedbackChallenge{}).
-				Where("id = ? AND consumed_at IS NULL AND expires_at > ?", in.ChallengeID, now).
-				Updates(map[string]any{"consumed_at": now, "feedback_id": in.Feedback.ID})
-			if result.Error != nil {
-				return result.Error
-			}
-			if result.RowsAffected == 0 {
-				return ErrChallengeConsumed
-			}
-		}
 		if err := tx.Create(in.Feedback).Error; err != nil {
 			if errors.Is(err, gorm.ErrDuplicatedKey) {
 				return ErrRequestConflict
@@ -202,19 +187,6 @@ func (s *FeedbackStore) GetFeedbackByRequestID(ctx context.Context, requestID st
 		return model.Feedback{}, ErrFeedbackNotFound
 	}
 	return fb, err
-}
-
-func (s *FeedbackStore) CreateChallenge(ctx context.Context, challenge *model.FeedbackChallenge) error {
-	return s.db.WithContext(ctx).Create(challenge).Error
-}
-
-func (s *FeedbackStore) GetChallenge(ctx context.Context, id string) (model.FeedbackChallenge, error) {
-	var challenge model.FeedbackChallenge
-	err := s.db.WithContext(ctx).Where("id = ?", id).First(&challenge).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return model.FeedbackChallenge{}, ErrChallengeNotFound
-	}
-	return challenge, err
 }
 
 func (s *FeedbackStore) CountFeedbackByContentHash(ctx context.Context, hash string, since time.Time) (int64, error) {
@@ -468,10 +440,7 @@ func (s *FeedbackStore) GetAppSetting(ctx context.Context, key string) (string, 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", nil
 	}
-	if err != nil {
-		return "", err
-	}
-	return setting.Value, nil
+	return setting.Value, err
 }
 
 // SetAppSetting writes a runtime setting.
@@ -481,6 +450,37 @@ func (s *FeedbackStore) SetAppSetting(ctx context.Context, key, value string, no
 		Columns:   []clause.Column{{Name: "key"}},
 		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
 	}).Create(&setting).Error
+}
+
+// SaveSettingsDocument persists the runtime settings JSON and its audit
+// record in one transaction so history and revisions can never diverge.
+// A nil record skips the audit insert (first-boot seeding).
+func (s *FeedbackStore) SaveSettingsDocument(ctx context.Context, key, value string, record *model.SettingsAudit, now time.Time) error {
+	now = now.UTC()
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if record != nil {
+			if err := tx.Create(record).Error; err != nil {
+				return err
+			}
+		}
+		setting := model.AppSetting{Key: key, Value: value, UpdatedAt: now}
+		return tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "key"}},
+			DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+		}).Create(&setting).Error
+	})
+}
+
+// ListSettingsAudit returns audit records newest first, paged.
+func (s *FeedbackStore) ListSettingsAudit(ctx context.Context, page, pageSize int) ([]model.SettingsAudit, int64, error) {
+	query := s.db.WithContext(ctx).Model(&model.SettingsAudit{})
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var items []model.SettingsAudit
+	err := query.Order("id DESC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error
+	return items, total, err
 }
 
 func (s *FeedbackStore) GetSession(ctx context.Context, tokenHash string, now time.Time) (model.AdminSession, error) {
@@ -816,7 +816,6 @@ type CleanupReport struct {
 	Sessions          int64
 	ConfirmTokens     int64
 	AbuseBuckets      int64
-	Challenges        int64
 	SentOutbox        int64
 	ContactScrubbed   int64
 	TokensInvalidated int64
@@ -841,12 +840,6 @@ func (s *FeedbackStore) Cleanup(ctx context.Context, now time.Time) (CleanupRepo
 
 		res = tx.Where("expires_at < ?", now).Delete(&model.AbuseBucket{})
 		report.AbuseBuckets = res.RowsAffected
-		if res.Error != nil {
-			return res.Error
-		}
-
-		res = tx.Where("expires_at < ?", now).Delete(&model.FeedbackChallenge{})
-		report.Challenges = res.RowsAffected
 		if res.Error != nil {
 			return res.Error
 		}

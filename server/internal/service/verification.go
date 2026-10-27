@@ -11,9 +11,11 @@ import (
 	"biodays/server/internal/security"
 )
 
+// consumeVerificationAttempts charges the per-IP verification budget only
+// when Turnstile is active, so enabling the challenge cannot be used to burn
+// an innocent IP's submit quota.
 func (s *FeedbackService) consumeVerificationAttempts(ctx context.Context, clientIP string, now time.Time) error {
-	settings := s.settings.Verification
-	if !settings.PowEnabled && !settings.TurnstileEnabled {
+	if !s.snapshot().TurnstileEnabled {
 		return nil
 	}
 	key := security.HMACKey(s.secret, "verify:ip", clientIP)
@@ -38,49 +40,31 @@ func (s *FeedbackService) consumeVerificationAttempts(ctx context.Context, clien
 	return nil
 }
 
-func (s *FeedbackService) verifySubmission(ctx context.Context, in SubmitInput, clientIP string, now time.Time) (string, time.Time, error) {
-	settings := s.settings.Verification
-	if !settings.PowEnabled && !settings.TurnstileEnabled {
-		return model.VerificationMethodNone, time.Time{}, nil
+// verifySubmission resolves the human-verification step. With Turnstile off
+// (the default, and the only option for mainland visitors) submissions pass
+// with method none; honeypot, rate limits and spam scoring still apply.
+func (s *FeedbackService) verifySubmission(ctx context.Context, in SubmitInput, clientIP string, now time.Time) (string, error) {
+	snap := s.snapshot()
+	if !snap.TurnstileEnabled {
+		return model.VerificationMethodNone, nil
 	}
 	token := strings.TrimSpace(in.TurnstileToken)
-	challengeID := strings.TrimSpace(in.ChallengeID)
-
-	if settings.TurnstileEnabled {
-		if token != "" {
-			if settings.Turnstile == nil {
-				return "", time.Time{}, ErrVerificationUnavailable
-			}
-			err := settings.Turnstile.Verify(ctx, token, clientIP)
-			switch {
-			case err == nil:
-				return model.VerificationMethodTurnstile, time.Time{}, nil
-			case errors.Is(err, antispam.ErrTurnstileRejected):
-				return "", time.Time{}, ErrTurnstileFailed
-			case errors.Is(err, antispam.ErrTurnstileUnavailable):
-				if !settings.PowEnabled || challengeID == "" {
-					return "", time.Time{}, ErrVerificationUnavailable
-				}
-			default:
-				return "", time.Time{}, ErrVerificationUnavailable
-			}
-		}
-		if !settings.PowEnabled {
-			if token == "" {
-				return "", time.Time{}, ErrTurnstileRequired
-			}
-			return "", time.Time{}, ErrVerificationUnavailable
-		}
+	if token == "" {
+		return "", ErrTurnstileRequired
 	}
-
-	if settings.PowEnabled {
-		issuedAt, err := s.verifyPoW(ctx, challengeID, in.ChallengeNonce, clientIP, now)
-		if err != nil {
-			return "", time.Time{}, err
-		}
-		return model.VerificationMethodPow, issuedAt, nil
+	verifier := snap.TurnstileVerifier
+	if verifier == nil {
+		return "", ErrVerificationUnavailable
 	}
-	return model.VerificationMethodNone, time.Time{}, nil
+	err := verifier.Verify(ctx, token, clientIP)
+	switch {
+	case err == nil:
+		return model.VerificationMethodTurnstile, nil
+	case errors.Is(err, antispam.ErrTurnstileRejected):
+		return "", ErrTurnstileFailed
+	default:
+		return "", ErrVerificationUnavailable
+	}
 }
 
 func (s *FeedbackService) allowConfirmation(ctx context.Context, email string, now time.Time) bool {
@@ -88,6 +72,7 @@ func (s *FeedbackService) allowConfirmation(ctx context.Context, email string, n
 	if email == "" {
 		return false
 	}
+	limits := s.snapshot().RateLimits
 	hour := now.Truncate(time.Hour)
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	emailKey := security.HMACKey(s.secret, "confirm:email", email)
@@ -97,8 +82,8 @@ func (s *FeedbackService) allowConfirmation(ctx context.Context, email string, n
 		ttl   time.Duration
 		limit int
 	}{
-		{emailKey, hour, time.Hour, s.settings.ConfirmHourly},
-		{security.HMACKey(s.secret, "confirm:email:day", email), day, 24 * time.Hour, s.settings.ConfirmDaily},
+		{emailKey, hour, time.Hour, limits.ConfirmHourly},
+		{security.HMACKey(s.secret, "confirm:email:day", email), day, 24 * time.Hour, limits.ConfirmDaily},
 	}
 	for _, check := range checks {
 		allowed, err := s.store.ConsumeRateLimit(ctx, check.key, check.start, check.start.Add(check.ttl), check.limit)
@@ -112,13 +97,13 @@ func (s *FeedbackService) allowConfirmation(ctx context.Context, email string, n
 func (s *FeedbackService) allowGlobalConfirmation(ctx context.Context, now time.Time) bool {
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	allowed, err := s.store.ConsumeRateLimit(ctx,
-		security.HMACKey(s.secret, "confirm:global:day"), day, day.Add(24*time.Hour), s.settings.ConfirmDailyGlobal)
+		security.HMACKey(s.secret, "confirm:global:day"), day, day.Add(24*time.Hour), s.snapshot().RateLimits.ConfirmDailyGlobal)
 	return err == nil && allowed
 }
 
 func (s *FeedbackService) allowAdminNotification(ctx context.Context, now time.Time) bool {
 	hour := now.Truncate(time.Hour)
 	allowed, err := s.store.ConsumeRateLimit(ctx,
-		security.HMACKey(s.secret, "admin:notify"), hour, hour.Add(time.Hour), s.settings.AdminMailHourly)
+		security.HMACKey(s.secret, "admin:notify"), hour, hour.Add(time.Hour), s.snapshot().RateLimits.AdminMailHourly)
 	return err == nil && allowed
 }

@@ -20,6 +20,7 @@ import (
 	"biodays/server/internal/mailer"
 	"biodays/server/internal/model"
 	"biodays/server/internal/security"
+	"biodays/server/internal/settings"
 	"biodays/server/internal/store"
 )
 
@@ -45,13 +46,6 @@ var (
 	ErrIdempotencyConflict      = store.ErrRequestConflict
 	ErrMailNotFound             = store.ErrOutboxNotFound
 	ErrSMTPUnavailable          = errors.New("smtp is not enabled")
-	ErrChallengeDisabled        = errors.New("challenge is disabled")
-	ErrChallengeRequired        = errors.New("challenge is required")
-	ErrChallengeInvalid         = errors.New("challenge is invalid")
-	ErrChallengeExpired         = errors.New("challenge expired")
-	ErrChallengeConsumed        = store.ErrChallengeConsumed
-	ErrChallengeFailed          = errors.New("challenge failed")
-	ErrChallengeTooFast         = errors.New("challenge submitted too fast")
 	ErrTurnstileRequired        = errors.New("turnstile is required")
 	ErrTurnstileFailed          = errors.New("turnstile failed")
 	ErrVerificationUnavailable  = errors.New("verification unavailable")
@@ -69,100 +63,86 @@ func fieldError(field, message string) error {
 	return &ValidationError{Field: field, Message: message}
 }
 
-type VerificationSettings struct {
-	PowEnabled       bool
-	PowDifficulty    int
-	PowTTL           time.Duration
-	PowMinSeconds    int
-	TurnstileEnabled bool
-	TurnstileSiteKey string
-	Turnstile        antispam.TurnstileVerifier
+// SettingsSource serves the effective runtime settings. The production
+// implementation wraps *settings.Manager (atomic snapshot per read); tests
+// use a static source.
+type SettingsSource interface {
+	// Effective returns the values the feedback flow consumes. Derived
+	// clients (Turnstile, spam judge) travel with the values.
+	Effective() EffectiveSettings
 }
 
-type SpamSettings struct {
-	Enabled    bool
-	AIAssisted bool
-	Judge      *antispam.Judge
-}
-
-type FeedbackSettings struct {
+// EffectiveSettings is the flat view of a settings snapshot consumed by the
+// feedback flow.
+type EffectiveSettings struct {
 	Enabled              bool
 	SubscriptionsEnabled bool
 	SMTPEnabled          bool
+	SMTPConfigured       bool
+	SMTPMissing          []string
+	SMTPError            string
 	SiteURL              string
 	NotifyTo             string
-	SMTPMissing          []string
-	SubmitHourly         int
-	SubmitDaily          int
-	ResendHourly         int
-	ResendDaily          int
-	ConfirmHourly        int
-	ConfirmDaily         int
-	ConfirmDailyGlobal   int
-	AdminMailHourly      int
-	Verification         VerificationSettings
-	Spam                 SpamSettings
-	Logger               *slog.Logger
+	RateLimits           settings.RateLimitsGroup
+	TurnstileEnabled     bool
+	TurnstileSiteKey     string
+	TurnstileVerifier    antispam.TurnstileVerifier
+	SpamEnabled          bool
+	SpamAIAssisted       bool
+	SpamJudge            *antispam.Judge
+}
+
+// staticSettings is the trivial SettingsSource used by tests and as a
+// fallback before the manager loads.
+type staticSettings struct {
+	values EffectiveSettings
+}
+
+func (s staticSettings) Effective() EffectiveSettings { return s.values }
+
+// StaticSettings exposes the fixed source for tests and tooling.
+func StaticSettings(values EffectiveSettings) SettingsSource {
+	return staticSettings{values: values}
 }
 
 type FeedbackService struct {
-	store    *store.FeedbackStore
-	settings FeedbackSettings
-	secret   []byte
-	now      func() time.Time
+	store  *store.FeedbackStore
+	source SettingsSource
+	secret []byte
+	now    func() time.Time
+	logger *slog.Logger
 }
 
-func NewFeedbackService(st *store.FeedbackStore, settings FeedbackSettings, secret []byte, now func() time.Time) *FeedbackService {
+func NewFeedbackService(st *store.FeedbackStore, source SettingsSource, secret []byte, now func() time.Time) *FeedbackService {
 	if now == nil {
 		now = time.Now
 	}
-	if settings.SubmitHourly <= 0 {
-		settings.SubmitHourly = 5
+	logger := slog.Default()
+	return &FeedbackService{store: st, source: source, secret: secret, now: now, logger: logger}
+}
+
+// snapshot reads the effective settings once per call so a request sees a
+// consistent view even if an admin saves mid-request.
+func (s *FeedbackService) snapshot() EffectiveSettings {
+	if s.source == nil {
+		return EffectiveSettings{}
 	}
-	if settings.SubmitDaily <= 0 {
-		settings.SubmitDaily = 20
-	}
-	if settings.ResendHourly <= 0 {
-		settings.ResendHourly = 3
-	}
-	if settings.ResendDaily <= 0 {
-		settings.ResendDaily = 10
-	}
-	if settings.ConfirmHourly <= 0 {
-		settings.ConfirmHourly = 1
-	}
-	if settings.ConfirmDaily <= 0 {
-		settings.ConfirmDaily = 3
-	}
-	if settings.ConfirmDailyGlobal <= 0 {
-		settings.ConfirmDailyGlobal = 100
-	}
-	if settings.AdminMailHourly <= 0 {
-		settings.AdminMailHourly = 10
-	}
-	if settings.Verification.PowDifficulty <= 0 {
-		settings.Verification.PowDifficulty = 4
-	}
-	if settings.Verification.PowTTL <= 0 {
-		settings.Verification.PowTTL = 10 * time.Minute
-	}
-	if settings.Verification.PowMinSeconds < 0 {
-		settings.Verification.PowMinSeconds = 3
-	}
-	return &FeedbackService{store: st, settings: settings, secret: secret, now: now}
+	return s.source.Effective()
 }
 
 func (s *FeedbackService) subscriptionsAvailable() bool {
-	return s.settings.Enabled && s.settings.SubscriptionsEnabled && s.settings.SMTPEnabled
+	snap := s.snapshot()
+	return snap.Enabled && snap.SubscriptionsEnabled && snap.SMTPEnabled
 }
 
 func (s *FeedbackService) Options() model.FeedbackOptionsDTO {
+	snap := s.snapshot()
 	kinds := make([]model.FeedbackKindOption, 0, len(model.FeedbackKinds))
 	for _, kind := range model.FeedbackKinds {
 		kinds = append(kinds, model.FeedbackKindOption{Value: kind, Label: mailer.KindLabel(kind)})
 	}
 	return model.FeedbackOptionsDTO{
-		Enabled:              s.settings.Enabled,
+		Enabled:              snap.Enabled,
 		SubscriptionsEnabled: s.subscriptionsAvailable(),
 		Kinds:                kinds,
 		Limits: model.FeedbackLimits{
@@ -171,12 +151,9 @@ func (s *FeedbackService) Options() model.FeedbackOptionsDTO {
 			NicknameMax: NicknameMax, SourceURLMax: SourceURLMax,
 		},
 		Verification: model.VerificationOptionsDTO{
-			PowEnabled:       s.settings.Verification.PowEnabled,
-			PowDifficulty:    s.settings.Verification.PowDifficulty,
-			PowMinSeconds:    s.settings.Verification.PowMinSeconds,
-			TurnstileEnabled: s.settings.Verification.TurnstileEnabled,
-			TurnstileSiteKey: s.settings.Verification.TurnstileSiteKey,
-			AIAssisted:       s.settings.Spam.AIAssisted,
+			TurnstileEnabled: snap.TurnstileEnabled,
+			TurnstileSiteKey: snap.TurnstileSiteKey,
+			AIAssisted:       snap.SpamAIAssisted,
 		},
 	}
 }
@@ -192,8 +169,6 @@ type SubmitInput struct {
 	Email          string
 	Subscribe      bool
 	Honeypot       string
-	ChallengeID    string
-	ChallengeNonce string
 	TurnstileToken string
 }
 
@@ -215,7 +190,8 @@ type normalizedSubmission struct {
 }
 
 func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP string) (SubmitOutcome, error) {
-	if !s.settings.Enabled {
+	snap := s.snapshot()
+	if !snap.Enabled {
 		return SubmitOutcome{}, ErrFeedbackDisabled
 	}
 	normalized, err := normalizeSubmission(in)
@@ -246,7 +222,7 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 	if err := s.consumeVerificationAttempts(ctx, clientIP, now); err != nil {
 		return SubmitOutcome{}, err
 	}
-	method, issuedAt, err := s.verifySubmission(ctx, in, clientIP, now)
+	method, err := s.verifySubmission(ctx, in, clientIP, now)
 	if err != nil {
 		return SubmitOutcome{}, err
 	}
@@ -255,14 +231,10 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 	}
 
 	decision := antispam.Decision{Verdict: model.SpamVerdictAllow, Signals: []string{}}
-	if s.settings.Spam.Judge != nil {
-		elapsed := -1
-		if !issuedAt.IsZero() {
-			elapsed = int(now.Sub(issuedAt).Seconds())
-		}
-		decision = s.settings.Spam.Judge.Evaluate(ctx, antispam.Input{
+	if snap.SpamJudge != nil {
+		decision = snap.SpamJudge.Evaluate(ctx, antispam.Input{
 			Title: normalized.Title, Content: normalized.Content, SourceURL: normalized.SourceURL,
-			Email: normalized.Email, ClientIP: clientIP, ElapsedSeconds: elapsed, Now: now,
+			Email: normalized.Email, ClientIP: clientIP, ElapsedSeconds: -1, Now: now,
 		})
 	}
 	isSpam := decision.Verdict == model.SpamVerdictSpam
@@ -312,9 +284,6 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 		},
 		Now: now,
 	}
-	if method == model.VerificationMethodPow {
-		input.ChallengeID = strings.TrimSpace(in.ChallengeID)
-	}
 
 	if normalized.Subscribe && !isSpam {
 		fb.SubscriptionStatus = model.SubscriptionPendingConfirmation
@@ -348,20 +317,20 @@ func (s *FeedbackService) Submit(ctx context.Context, in SubmitInput, clientIP s
 	if !isSpam && s.allowAdminNotification(ctx, now) {
 		adminNotified = true
 		adminData := s.dataFor(fb)
-		adminData.AdminURL = siteURL(s.settings.SiteURL) + "/admin/feedback/" + fb.ID
+		adminData.AdminURL = siteURL(snap.SiteURL) + "/admin/feedback/" + fb.ID
 		adminPayload, err := encodePayload(adminData)
 		if err != nil {
 			return SubmitOutcome{}, err
 		}
 		input.Outbox = append(input.Outbox, model.MailOutbox{
 			ID: newFeedbackID(), Type: model.MailTypeAdminNewFeedback,
-			EventKey: "admin:" + fb.ID, Recipient: s.settings.NotifyTo,
+			EventKey: "admin:" + fb.ID, Recipient: snap.NotifyTo,
 			Template: "admin_new_feedback", Payload: adminPayload,
 			Status: model.MailStatusPending, NextAttemptAt: now,
 		})
 	}
-	if !isSpam && !adminNotified && s.settings.Logger != nil {
-		s.settings.Logger.Warn("admin notification suppressed by hourly cap")
+	if !isSpam && !adminNotified {
+		s.logger.Warn("admin notification suppressed by hourly cap")
 	}
 
 	if err := s.store.CreateSubmission(ctx, input); err != nil {
@@ -483,6 +452,7 @@ func hashNormalized(n normalizedSubmission) string {
 }
 
 func (s *FeedbackService) consumeSubmitLimits(ctx context.Context, clientIP string, now time.Time) error {
+	limits := s.snapshot().RateLimits
 	key := security.HMACKey(s.secret, "feedback:ip", clientIP)
 	hour := now.Truncate(time.Hour)
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -491,8 +461,8 @@ func (s *FeedbackService) consumeSubmitLimits(ctx context.Context, clientIP stri
 		ttl   time.Duration
 		limit int
 	}{
-		{hour, time.Hour, s.settings.SubmitHourly},
-		{day, 24 * time.Hour, s.settings.SubmitDaily},
+		{hour, time.Hour, limits.SubmitHourly},
+		{day, 24 * time.Hour, limits.SubmitDaily},
 	} {
 		allowed, err := s.store.ConsumeRateLimit(ctx, key, window.start, window.start.Add(window.ttl), window.limit)
 		if err != nil {
@@ -551,7 +521,7 @@ func (s *FeedbackService) Confirm(ctx context.Context, rawToken string) (TokenRe
 	}
 	if model.IsNotifiableStatus(fb.Status) {
 		data := s.dataFor(fb)
-		data.UnsubscribeURL = mailer.UnsubscribeURL(siteURL(s.settings.SiteURL), unsubRaw)
+		data.UnsubscribeURL = mailer.UnsubscribeURL(siteURL(s.snapshot().SiteURL), unsubRaw)
 		payload, err := encodePayload(data)
 		if err != nil {
 			return TokenResult{}, err
@@ -627,8 +597,8 @@ func (s *FeedbackService) consumeResendLimits(ctx context.Context, email, feedba
 		ttl   time.Duration
 		limit int
 	}{
-		{security.HMACKey(s.secret, "resend:email", email), hour, time.Hour, s.settings.ResendHourly},
-		{security.HMACKey(s.secret, "resend:email:day", email), day, 24 * time.Hour, s.settings.ResendDaily},
+		{security.HMACKey(s.secret, "resend:email", email), hour, time.Hour, s.snapshot().RateLimits.ResendHourly},
+		{security.HMACKey(s.secret, "resend:email:day", email), day, 24 * time.Hour, s.snapshot().RateLimits.ResendDaily},
 		{security.HMACKey(s.secret, "resend:feedback", feedbackID), minute, time.Minute, 1},
 	}
 	for _, check := range checks {
@@ -729,7 +699,7 @@ func (s *FeedbackService) UpdateFeedback(ctx context.Context, admin string, in A
 			data.Status = newStatus
 			data.StatusLabel = mailer.StatusLabel(newStatus)
 			data.PublicReply = effectiveReply
-			data.UnsubscribeURL = mailer.UnsubscribeURL(siteURL(s.settings.SiteURL), raw)
+			data.UnsubscribeURL = mailer.UnsubscribeURL(siteURL(s.snapshot().SiteURL), raw)
 			payload, err := encodePayload(data)
 			if err != nil {
 				return AdminUpdateResult{}, err
@@ -799,11 +769,13 @@ func (s *FeedbackService) MailStatus(ctx context.Context) (model.MailStatusDTO, 
 	if err != nil {
 		return model.MailStatusDTO{}, err
 	}
+	snap := s.snapshot()
 	status := model.MailStatusDTO{
-		SMTPEnabled:      s.settings.SMTPEnabled,
-		Configured:       s.settings.SMTPEnabled && len(s.settings.SMTPMissing) == 0 && s.settings.NotifyTo != "",
-		Missing:          s.settings.SMTPMissing,
-		NotifyConfigured: s.settings.NotifyTo != "",
+		SMTPEnabled:      snap.SMTPEnabled,
+		Configured:       snap.SMTPEnabled && snap.SMTPConfigured && snap.NotifyTo != "",
+		Missing:          snap.SMTPMissing,
+		NotifyConfigured: snap.NotifyTo != "",
+		Error:            snap.SMTPError,
 		Counts:           counts,
 		RecentErrors:     make([]model.MailTaskDTO, 0, len(recent)),
 	}
@@ -818,16 +790,20 @@ func (s *FeedbackService) MailStatus(ctx context.Context) (model.MailStatusDTO, 
 }
 
 func (s *FeedbackService) QueueTestMail(ctx context.Context) error {
-	if !s.settings.SMTPEnabled {
+	snap := s.snapshot()
+	if !snap.SMTPEnabled {
 		return ErrSMTPUnavailable
 	}
-	if s.settings.NotifyTo == "" {
+	if snap.SMTPError != "" {
+		return errors.New("smtp is not ready: " + snap.SMTPError)
+	}
+	if snap.NotifyTo == "" {
 		return errors.New("admin notify address is not configured")
 	}
 	now := s.now().UTC()
 	data := mailer.TemplateData{
 		Type: model.MailTypeSMTPTest, SiteName: "biodays",
-		SiteURL: siteURL(s.settings.SiteURL),
+		SiteURL: siteURL(snap.SiteURL),
 	}
 	payload, err := encodePayload(data)
 	if err != nil {
@@ -835,7 +811,7 @@ func (s *FeedbackService) QueueTestMail(ctx context.Context) error {
 	}
 	item := &model.MailOutbox{
 		ID: newFeedbackID(), Type: model.MailTypeSMTPTest,
-		EventKey: "smtp-test:" + newFeedbackID(), Recipient: s.settings.NotifyTo,
+		EventKey: "smtp-test:" + newFeedbackID(), Recipient: snap.NotifyTo,
 		Template: "smtp_test", Payload: payload, Status: model.MailStatusPending,
 		NextAttemptAt: now,
 	}
@@ -896,9 +872,9 @@ func (s *FeedbackService) newToken(feedbackID, purpose, email string, ttl time.D
 func (s *FeedbackService) confirmData(fb model.Feedback, token model.SubscriptionToken, raw string) mailer.TemplateData {
 	return mailer.TemplateData{
 		Type:     model.MailTypeSubscriptionConfirm,
-		SiteName: "biodays", SiteURL: siteURL(s.settings.SiteURL),
+		SiteName: "biodays", SiteURL: siteURL(s.snapshot().SiteURL),
 		FeedbackID:       fb.ID,
-		ConfirmURL:       mailer.ConfirmURL(siteURL(s.settings.SiteURL), raw),
+		ConfirmURL:       mailer.ConfirmURL(siteURL(s.snapshot().SiteURL), raw),
 		TokenHash:        token.TokenHash,
 		EmailFingerprint: token.EmailFingerprint,
 	}
@@ -906,7 +882,7 @@ func (s *FeedbackService) confirmData(fb model.Feedback, token model.Subscriptio
 
 func (s *FeedbackService) dataFor(fb model.Feedback) mailer.TemplateData {
 	return mailer.TemplateData{
-		SiteName: "biodays", SiteURL: siteURL(s.settings.SiteURL),
+		SiteName: "biodays", SiteURL: siteURL(s.snapshot().SiteURL),
 		FeedbackID: fb.ID, Kind: fb.Kind, KindLabel: mailer.KindLabel(fb.Kind),
 		Title: fb.Title, Nickname: fb.Nickname, Email: fb.Email,
 		Content: fb.Content, SourceURL: fb.SourceURL, StoryID: fb.StoryID,

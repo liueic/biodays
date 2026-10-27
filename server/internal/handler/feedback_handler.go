@@ -74,33 +74,6 @@ func (h *FeedbackHandler) Options(c *gin.Context) {
 	c.JSON(http.StatusOK, FeedbackOptionsResponse{Data: h.service.Options()})
 }
 
-type ChallengeResponse struct {
-	Data model.ChallengeDTO `json:"data"`
-}
-
-// Challenge godoc
-// @Summary      签发 PoW 挑战
-// @Description  返回一次性、绑定客户端 IP 的 SHA-256 工作量证明挑战。挑战在服务端存储，提交后单次消费。
-// @Tags         feedback
-// @Produce      json
-// @Success      200  {object}  ChallengeResponse
-// @Failure      404  {object}  ErrorResponse
-// @Failure      429  {object}  ErrorResponse
-// @Failure      503  {object}  ErrorResponse
-// @Router       /api/v1/feedback/challenge [post]
-func (h *FeedbackHandler) Challenge(c *gin.Context) {
-	if h.service == nil {
-		fail(c, http.StatusServiceUnavailable, CodeFeedbackUnavailable, "feedback is not enabled")
-		return
-	}
-	challenge, err := h.service.IssueChallenge(c.Request.Context(), c.ClientIP())
-	if err != nil {
-		h.writeError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, ChallengeResponse{Data: challenge})
-}
-
 type submitRequest struct {
 	RequestID        string `json:"request_id"`
 	Kind             string `json:"kind"`
@@ -112,8 +85,6 @@ type submitRequest struct {
 	Email            string `json:"email"`
 	SubscribeUpdates bool   `json:"subscribe_updates"`
 	Website          string `json:"website"` // honeypot: must stay empty
-	ChallengeID      string `json:"challenge_id"`
-	ChallengeNonce   string `json:"challenge_nonce"`
 	TurnstileToken   string `json:"turnstile_token"`
 }
 
@@ -148,7 +119,6 @@ func (h *FeedbackHandler) Submit(c *gin.Context) {
 		RequestID: req.RequestID, Kind: req.Kind, Title: req.Title, Content: req.Content,
 		SourceURL: req.SourceURL, StoryID: req.StoryID, Nickname: req.Nickname,
 		Email: req.Email, Subscribe: req.SubscribeUpdates, Honeypot: req.Website,
-		ChallengeID: req.ChallengeID, ChallengeNonce: req.ChallengeNonce,
 		TurnstileToken: req.TurnstileToken,
 	}, c.ClientIP())
 	if err != nil {
@@ -269,20 +239,6 @@ func (h *FeedbackHandler) writeError(c *gin.Context, err error) {
 	case errors.Is(err, service.ErrRateLimited):
 		c.Header("Retry-After", "60")
 		fail(c, http.StatusTooManyRequests, CodeRateLimited, "too many requests; retry later")
-	case errors.Is(err, service.ErrChallengeDisabled):
-		fail(c, http.StatusNotFound, CodeChallengeDisabled, "challenge is disabled")
-	case errors.Is(err, service.ErrChallengeRequired):
-		fail(c, http.StatusBadRequest, CodeChallengeRequired, "challenge is required")
-	case errors.Is(err, service.ErrChallengeInvalid):
-		fail(c, http.StatusForbidden, CodeChallengeInvalid, "challenge is invalid")
-	case errors.Is(err, service.ErrChallengeExpired):
-		fail(c, http.StatusForbidden, CodeChallengeExpired, "challenge has expired")
-	case errors.Is(err, service.ErrChallengeConsumed):
-		fail(c, http.StatusConflict, CodeChallengeConsumed, "challenge was already used")
-	case errors.Is(err, service.ErrChallengeFailed):
-		fail(c, http.StatusUnprocessableEntity, CodeChallengeFailed, "challenge proof is invalid")
-	case errors.Is(err, service.ErrChallengeTooFast):
-		fail(c, http.StatusUnprocessableEntity, CodeChallengeTooFast, "please wait before submitting")
 	case errors.Is(err, service.ErrTurnstileRequired):
 		fail(c, http.StatusBadRequest, CodeTurnstileRequired, "turnstile token is required")
 	case errors.Is(err, service.ErrTurnstileFailed):
