@@ -4,7 +4,6 @@ import { Button } from "@react95/core/Button";
 import { Frame } from "@react95/core/Frame";
 import { TitleBar } from "@react95/core/TitleBar";
 import { Globe } from "@react95/icons/Globe";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactElement, ReactNode } from "react";
 import { MacIconGlobe } from "@/components/mac/icons";
@@ -12,16 +11,6 @@ import { MacTitleBar } from "@/components/mac/window";
 import { useWindowFrame } from "@/components/win/use-window-frame";
 import { MAIN_WINDOW } from "@/components/win/window-store";
 import { cn } from "@/lib/utils";
-
-const MENU = [
-  { href: "/", label: "今日", key: "T" },
-  { href: "/archive", label: "归档", key: "A" },
-  { href: "/lab", label: "手册", key: "L" },
-  { href: "/about", label: "关于", key: "B" },
-  // external marks links into the (private) group: they must be full page
-  // loads so the session recorder loaded in the reading layout unloads.
-  { href: "/feedback", label: "反馈", key: "F", external: true },
-];
 
 type WindowProps = {
   title: string;
@@ -55,6 +44,7 @@ export function Window({
       ref={frame.ref}
       {...frame.focusProps}
       aria-label={title}
+      hidden={frame.hidden}
       data-active={frame.active || undefined}
       data-shaded={frame.shaded || undefined}
       bgColor="$material"
@@ -63,7 +53,6 @@ export function Window({
       className={cn(
         "os-window mac-window relative mx-auto w-full min-w-0",
         width === "wide" ? "max-w-[1220px]" : "max-w-[880px]",
-        frame.hidden && "hidden",
         frame.maximized && !frame.hidden && "os-maximized mac-maximized",
       )}
     >
@@ -96,35 +85,6 @@ export function Window({
       />
 
       <div className="os-window-body">
-        <nav aria-label="主菜单" data-os-only="win" className="flex gap-1 px-1 py-1">
-          {MENU.map((item) => {
-            const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
-            const className = "menu-item";
-            const content = (
-              <>
-                {item.label}({item.key})
-              </>
-            );
-            if (item.external) {
-              return (
-                <a key={item.href} href={item.href} className={className}>
-                  {content}
-                </a>
-              );
-            }
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={className}
-                aria-current={active ? "page" : undefined}
-              >
-                {content}
-              </Link>
-            );
-          })}
-        </nav>
-
         {variant === "browser" && (
           <Frame
             display="flex"

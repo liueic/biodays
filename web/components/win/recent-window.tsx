@@ -35,12 +35,13 @@ export function RecentWindow({ stories, className }: RecentWindowProps) {
       {...frame.focusProps}
       as="section"
       aria-label="最近归档"
+      hidden={frame.hidden}
       data-active={frame.active || undefined}
       data-shaded={frame.shaded || undefined}
       bgColor="$material"
       boxShadow="$out"
       padding="$2"
-      className={cn("mac-window", className, frame.hidden && "hidden")}
+      className={cn("mac-window", className)}
     >
       <TitleBar
         active={frame.active}

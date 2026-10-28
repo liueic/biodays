@@ -3,42 +3,43 @@
 import { Bulb } from "@react95/icons/Bulb";
 
 import { ErrorState } from "@/components/error-state";
-import { LabHomePanel } from "@/components/lab/home-panel";
-import { DesktopIcons } from "@/components/os-desktop-icons";
 import { TodayStory } from "@/components/today-story";
 import { RecentWindow } from "@/components/win/recent-window";
 import { Window } from "@/components/win/window";
-import { openWindow, RECENT_WINDOW, useIsClosed } from "@/components/win/window-store";
+import { RECENT_WINDOW, useIsClosed } from "@/components/win/window-store";
+import { useDesktopMode } from "@/hooks/use-desktop-mode";
 import type { StorySummary, TodayResponse } from "@/lib/api";
 import type { TodayStamp } from "@/lib/date";
-import type { LabSectionID } from "@/lib/lab";
+import type { DailyLabRecommendations } from "@/lib/lab-recommendations";
 
 type HomeDesktopProps = {
   today: TodayResponse | null;
   recent: StorySummary[];
   stamp: TodayStamp;
-  initialLabSectionId: LabSectionID;
+  labRecommendations: DailyLabRecommendations;
 };
 
 /**
- * Homepage desktop composition: icons on the left, the main window centered,
- * and a small recent-archive window overlapping its bottom-right corner on wide
- * screens. On narrow screens everything stacks vertically.
+ * A single-screen desktop on large, precise-pointer devices. Smaller screens use
+ * one document window and keep all destinations in the system menus.
  */
-export function HomeDesktop({ today, recent, stamp, initialLabSectionId }: HomeDesktopProps) {
+export function HomeDesktop({ today, recent, stamp, labRecommendations }: HomeDesktopProps) {
   const recentClosed = useIsClosed(RECENT_WINDOW);
+  const showPreview = useDesktopMode(1200);
 
   return (
-    <main className="relative mx-auto w-full max-w-[1120px]">
-      <DesktopIcons
-        archiveOpen={!recentClosed}
-        onReopenArchive={() => openWindow(RECENT_WINDOW)}
-        className="os-desktop-icons flex flex-wrap items-start gap-x-3 gap-y-4 px-1 pb-5 lg:absolute lg:top-0 lg:left-0 lg:p-0"
-      />
-
-      <div className="lg:mx-auto lg:max-w-[640px]">
+    <main
+      className="home-desktop relative mx-auto w-full max-w-[1120px]"
+      data-preview={showPreview && !recentClosed && recent.length > 0 ? "" : undefined}
+    >
+      <div className="home-main-window mx-auto w-full max-w-[640px]">
         {today ? (
-          <TodayStory initialStory={today.data} isFallback={today.meta.is_fallback} stamp={stamp} />
+          <TodayStory
+            initialStory={today.data}
+            isFallback={today.meta.is_fallback}
+            stamp={stamp}
+            labRecommendations={labRecommendations}
+          />
         ) : (
           <Window
             title="biodays"
@@ -54,14 +55,12 @@ export function HomeDesktop({ today, recent, stamp, initialLabSectionId }: HomeD
         )}
       </div>
 
-      {!recentClosed && recent.length > 0 && (
+      {showPreview && !recentClosed && recent.length > 0 && (
         <RecentWindow
           stories={recent}
-          className="relative z-10 mx-auto mt-4 w-full max-w-[640px] lg:mx-0 lg:mr-4 lg:ml-auto lg:w-[340px] lg:-mt-16"
+          className="home-recent-window relative z-10 mx-auto mt-4 w-full max-w-[640px]"
         />
       )}
-
-      <LabHomePanel initialSectionId={initialLabSectionId} />
     </main>
   );
 }
