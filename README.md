@@ -3,7 +3,9 @@
 以 Windows 98 桌面介绍生物学知识与实验室科学史。现有 408 篇故事已经无损迁移为 Markdown；文章阅读不依赖数据库或邮件服务。
 
 - Next.js 16 / React 19，保留 Win98 界面、原文章 ID、链接、随机阅读与已读 Cookie。
+- 首次访问按系统选择外观：Mac 使用经典 Mac OS 8/9 Platinum，Windows 及其他系统使用 Win98。两套桌面均有切换图标，任务栏或顶部菜单也可切换；手动偏好以 `biodays.os` Cookie 保存一年，优先于系统识别。主题复用参考项目的 Mac 前端、React95 控件与 Neodrag 拖拽，页面内容和业务服务共用，切换保留未提交表单与筛选状态。
 - 内容保存在 `web/content/stories/`，Git 提交触发 Vercel 发布。
+- 实验室手册入口为 `/lab`，下设技术解读（`/lab/methods`）、实验 Protocol（`/lab/protocols`）和实验室技巧（`/lab/tips`）。首页随机展示一张栏目导览，点击「下一条」优先展示本轮尚未浏览的栏目，浏览完三个栏目后开始新一轮，切换时不连续重复。文章保存在 `web/content/lab/`，构建时由 `bun scripts/lab-content.mjs` 进行元数据校验与预渲染；栏目定义集中在 `web/lib/lab.ts`。
 - Supabase PostgreSQL 保存反馈、订阅、邮件任务、运行配置和审计；Supabase Auth 管理邮箱登录，关闭公开注册。
 - Resend 官方 SDK 发送邮件，Supabase Cron 调度队列，webhook 验签更新投递情况。
 
@@ -28,7 +30,7 @@ supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtim
 
 将本地 Supabase 的 URL、anon/publishable key、service_role/secret key 配置到 `web/.env.local`。不要提交密钥；`SUPABASE_SECRET_KEY` 仅在服务端使用。
 
-通过环境变量设置 `BIODAYS_ADMIN_EMAIL` 和至少 12 位的 `BIODAYS_ADMIN_PASSWORD`，在 `web/` 运行 `bun run admin:create`。脚本预先确认邮箱并加入管理员成员表；普通 Supabase 用户没有管理权限。首次创建后删除密码环境变量。已有账号可在 SQL editor 中把用户 UUID 加入 `biodays_admins`。
+管理员认证使用 Supabase Auth，支持 GitHub 登录和邮箱密码登录。按[部署文档](docs/deployment.md#github-管理员登录)配置 GitHub Provider 与回调后，在 `web/.env.local` 设置 `BIODAYS_ADMIN_EMAIL`，进入 `web/` 运行 `proto run bun -- run admin:create`，可创建不设密码的 GitHub 管理员账号。若需要密码登录，再临时设置至少 12 位的 `BIODAYS_ADMIN_PASSWORD`，创建后删除密码配置。脚本预先确认邮箱并加入管理员成员表；普通 Supabase 用户没有管理权限。已有账号可在 SQL editor 中把用户 UUID 加入 `biodays_admins`。
 
 ## 编辑故事
 

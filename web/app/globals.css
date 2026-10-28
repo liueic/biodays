@@ -6,11 +6,23 @@
 @import "./fonts/stories.css";
 
 :root {
+  --font-reading:
+    "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", ui-serif, serif;
+}
+
+/* Win98 is the default theme: these values apply even before the inline OS-detection
+   script runs (and when JavaScript is disabled), because `:root` matches always. */
+:root,
+[data-os="win"] {
   --desktop: #008080;
   --font-pixel:
     var(--font-pixel-ui), "Biodays Story Pixel", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-reading:
-    "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC", ui-serif, serif;
+  --selection: #000080;
+  --selection-text: #fff;
+  --link: #000080;
+  --menu-highlight: #000080;
+  --menu-highlight-text: #fff;
+  --titlebar-active: linear-gradient(90deg, #000080, #1084d0);
   --mail-material: #c3c7cb;
   --mail-material-light: #d4d0c8;
   --mail-paper: #fff;
@@ -29,7 +41,42 @@
   --mail-touch-target: 40px;
 }
 
+/* Classic Macintosh palette: the lavender System 7.6 / Mac OS 8 desktop. */
+[data-os="mac"] {
+  --desktop: #9b9bcb;
+  --font-pixel:
+    var(--font-chicago), var(--font-pixel-ui), "Biodays Story Pixel", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --selection: #000;
+  --selection-text: #fff;
+  --link: #333399;
+  --menu-highlight: #000;
+  --menu-highlight-text: #fff;
+  --titlebar-active: repeating-linear-gradient(
+    180deg,
+    #fafafa 0,
+    #fafafa 1px,
+    #cfcfcf 1px,
+    #cfcfcf 2px
+  );
+  --mail-material: #dddddd;
+  --mail-material-light: #ececec;
+  --mail-highlight: #fff;
+  --mail-shadow: #9a9a9a;
+  --mail-dark-shadow: #333;
+  --mail-selection: #666699;
+  --mail-selection-light: #9999bb;
+  --mail-grid-line: #e4e4e4;
+  --mail-muted: #555;
+  --mail-info: #f2f2e6;
+}
+
 /* Unlayered rules win over every layer above. */
+:root:not([data-os="mac"]) [data-os-only="mac"],
+[data-os="mac"] [data-os-only="win"] {
+  display: none !important;
+}
+
 html {
   background: var(--desktop);
   scrollbar-gutter: stable;
@@ -57,7 +104,7 @@ body {
 }
 
 ::selection {
-  background: #000080;
+  background: var(--selection);
   color: #fff;
 }
 
@@ -68,7 +115,7 @@ body {
 
 /* Win98 gradient title bar on top of React95's flat Win95 header */
 .win98-title:not([data-inactive]) {
-  background: linear-gradient(90deg, #000080, #1084d0);
+  background: var(--titlebar-active);
 }
 
 /* React95 titles otherwise refuse to shrink, pushing window controls off screen. */
@@ -122,6 +169,42 @@ body {
   padding-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
 }
 
+[data-os="mac"] #main {
+  padding-top: calc(32px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* One content tree survives theme changes, including forms and scroll containers. */
+.os-window.os-maximized {
+  position: fixed;
+  z-index: 40;
+  inset: 4px 4px calc(2.5rem + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.os-maximized .os-window-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.os-maximized .window-content {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.os-maximized .window-drag-handle,
+.os-maximized .mac-toolbar,
+.os-maximized .mac-window-status {
+  flex-shrink: 0;
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -156,12 +239,12 @@ body {
 .menu-item:hover,
 .menu-item:focus-visible,
 .menu-item[aria-current="page"] {
-  background: #000080;
+  background: var(--selection);
   color: #fff;
 }
 
 .menu-item[aria-pressed="true"] {
-  background: #000080;
+  background: var(--selection);
   color: #fff;
 }
 
@@ -201,14 +284,14 @@ button:disabled {
 
 /* Classic hyperlink: navy + underline, inverted on hover/focus */
 .text-link {
-  color: #000080;
+  color: var(--link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .text-link:hover,
 .text-link:focus-visible {
-  background: #000080;
+  background: var(--selection);
   color: #fff;
   outline-color: #fff;
 }
@@ -223,7 +306,7 @@ button:disabled {
 
 .tag-link:hover,
 .tag-link:focus-visible {
-  background: #000080;
+  background: var(--selection);
   color: #fff;
   outline-color: #fff;
 }
@@ -260,7 +343,7 @@ button:disabled {
 
 .desktop-icon[data-selected] .desktop-icon-label,
 .desktop-icon:focus-visible .desktop-icon-label {
-  background: #000080;
+  background: var(--selection);
   outline: 1px dotted #fff;
   text-shadow: none;
 }
@@ -281,7 +364,7 @@ button:disabled {
 
 .recent-story-link:hover,
 .recent-story-link:focus-visible {
-  background: #000080;
+  background: var(--selection);
   color: #fff;
 }
 
@@ -1347,4 +1430,265 @@ button:disabled {
   flex-wrap: wrap;
   gap: 6px;
   padding-bottom: 4px;
+}
+
+/* The lab notebook uses the same folders, paper and inset borders as the desktop. */
+.lab-folder-link svg {
+  flex-shrink: 0;
+}
+
+.lab-folder-link:hover,
+.lab-folder-link:focus-visible,
+.lab-folder-link[aria-current="page"] {
+  background: var(--selection);
+  color: #fff;
+  outline-color: #fff;
+}
+
+.lab-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: #555;
+}
+
+.lab-browser {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  min-height: 400px;
+  border: 1px solid #868a8e;
+}
+
+.lab-sidebar {
+  min-width: 0;
+  padding: 14px 6px;
+  border-right: 1px solid #c3c7cb;
+  background: #f1f1e8;
+}
+
+.lab-sidebar-heading {
+  margin: 0 8px 12px;
+  color: #555;
+}
+
+.lab-folder-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  color: #000;
+  text-decoration: none;
+}
+
+.lab-sidebar-note {
+  margin: 28px 8px 0;
+  padding-top: 14px;
+  border-top: 1px solid #d4d0c8;
+  color: #555;
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.lab-main {
+  min-width: 0;
+  padding: 22px;
+  background: #fffef8;
+}
+
+.lab-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lab-heading-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  background: #f1f1e8;
+  box-shadow:
+    inset 1px 1px #d4d0c8,
+    inset -1px -1px #fff;
+}
+
+.lab-eyebrow {
+  color: #555;
+  font-size: 12px;
+}
+
+.lab-intro {
+  margin-top: 18px;
+  color: #444;
+  line-height: 1.9;
+}
+
+.lab-section-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.lab-section-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 14px 12px;
+  border: 1px solid #c3c7cb;
+  background: #f1f1e8;
+  color: #000;
+  text-decoration: none;
+  box-shadow:
+    inset 1px 1px #fff,
+    1px 1px #d4d0c8;
+}
+
+.lab-section-card:hover,
+.lab-section-card:focus-visible {
+  border-color: #000080;
+  background: #ededf8;
+}
+
+.lab-section-number {
+  color: #777;
+  font-family: monospace;
+  font-size: 11px;
+}
+
+.lab-section-summary {
+  flex: 1;
+  margin-top: 8px;
+  color: #555;
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.lab-card-action {
+  margin-top: 24px;
+  color: var(--link);
+  font-size: 12px;
+}
+
+.lab-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px dotted #c3c7cb;
+  color: #555;
+  font-size: 12px;
+}
+
+.lab-contents {
+  margin-top: 24px;
+  border: 1px solid #c3c7cb;
+  background: #fff;
+}
+
+.lab-contents-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #c3c7cb;
+  background: #e8e8e0;
+}
+
+.lab-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+  list-style: none;
+}
+
+.lab-topics li {
+  border: 1px solid #d4d0c8;
+  padding: 1px 6px;
+  color: #555;
+  font-size: 12px;
+}
+
+.lab-article-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.lab-article-item {
+  padding: 12px 14px;
+  border-top: 1px solid #dfdfdf;
+  background: #fff;
+  transition: background-color 0.1s ease;
+}
+
+.lab-article-item:hover {
+  background: #f4f4f0;
+}
+
+.lab-article-title {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.lab-article-title:hover {
+  text-decoration: underline;
+  color: var(--link);
+}
+
+.lab-empty {
+  display: flex;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px 28px;
+  text-align: center;
+}
+
+@media (max-width: 639px) {
+  .lab-browser {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lab-sidebar {
+    padding: 6px;
+    border-right: 0;
+    border-bottom: 1px solid #c3c7cb;
+  }
+
+  .lab-sidebar nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lab-sidebar-heading,
+  .lab-sidebar-note {
+    display: none;
+  }
+
+  .lab-main {
+    padding: 18px 14px;
+  }
+
+  .lab-section-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lab-section-card {
+    padding: 14px;
+  }
+
+  .lab-card-action {
+    margin-top: 12px;
+  }
 }

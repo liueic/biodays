@@ -175,6 +175,13 @@ export async function login(username: string, password: string): Promise<AdminSe
   return response.data;
 }
 
+export async function githubLogin(): Promise<string> {
+  const response = await request<{ data: { url: string } }>("/admin/login/github", {
+    method: "POST",
+  });
+  return response.data.url;
+}
+
 export async function logout(): Promise<void> {
   try {
     await request("/admin/logout", { method: "POST" });

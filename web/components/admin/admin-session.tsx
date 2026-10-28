@@ -51,7 +51,9 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
         }
         if (reason instanceof FeedbackApiError && reason.status === 403) {
           setError(
-            "请求来源校验失败：请确认通过站点正式域名访问，且 BIODAYS_SITE_URL 配置与之一致。",
+            reason.code === "FORBIDDEN"
+              ? "此账号没有管理员权限。"
+              : "请求来源校验失败：请确认通过站点正式域名访问，且 BIODAYS_SITE_URL 配置与之一致。",
           );
           return;
         }

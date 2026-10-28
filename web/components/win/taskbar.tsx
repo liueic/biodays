@@ -11,7 +11,9 @@ import { Mail } from "@react95/icons/Mail";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { MacIconHappyMac } from "@/components/mac/icons";
 import { MAIN_WINDOW, openWindow, toggleWindow, useWindows } from "@/components/win/window-store";
+import { setOsTheme } from "@/hooks/use-os-theme";
 import { DOCS_URL } from "@/lib/site";
 
 export function DesktopTaskbar() {
@@ -77,6 +79,7 @@ export function DesktopTaskbar() {
             {[
               { label: "今日故事", path: "/", icon: <FileText variant="32x32_4" /> },
               { label: "归档", path: "/archive", icon: <Folder variant="32x32_4" /> },
+              { label: "实验室手册", path: "/lab", icon: <HelpBook variant="32x32_4" /> },
               { label: "关于", path: "/about", icon: <FileFind variant="32x32_4" /> },
               { label: "灵感信箱", path: "/feedback", icon: <Mail variant="32x32_4" /> },
             ].map((item) => (
@@ -102,6 +105,19 @@ export function DesktopTaskbar() {
               >
                 <HelpBook variant="32x32_4" />
                 API 文档
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="menu-item flex w-full items-center gap-2 text-left"
+                onClick={() => {
+                  setOpen(false);
+                  setOsTheme("mac");
+                }}
+              >
+                <MacIconHappyMac aria-hidden />
+                切换到 Mac
               </button>
             </li>
             <li>
@@ -141,6 +157,18 @@ export function DesktopTaskbar() {
           </button>
         ))}
       </div>
+      <button
+        type="button"
+        className="taskbar-button shrink-0"
+        aria-label="切换到 Mac"
+        title="切换到 Mac"
+        onClick={() => {
+          setOpen(false);
+          setOsTheme("mac");
+        }}
+      >
+        <MacIconHappyMac width={16} height={16} aria-hidden />
+      </button>
       <Frame boxShadow="$in" className="shrink-0 px-3 py-1" aria-label="当前时间">
         {clock}
       </Frame>

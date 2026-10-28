@@ -30,8 +30,8 @@ export async function authClient() {
     },
   });
 }
-export async function admin() {
-  const auth = await authClient();
+export async function admin(client?: Awaited<ReturnType<typeof authClient>>) {
+  const auth = client ?? (await authClient());
   const { data, error } = await auth.auth.getUser();
   if (error || !data.user) throw new HttpError(401, "UNAUTHORIZED", "请先登录。");
   const membership = await db()

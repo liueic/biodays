@@ -3,6 +3,7 @@ import { Frame } from "@react95/core/Frame";
 import { TitleBar } from "@react95/core/TitleBar";
 import Link from "next/link";
 
+import { MacTitleBar } from "@/components/mac/window";
 import { DialogIcon, type DialogVariant } from "@/components/win/dialog-icons";
 
 type ErrorStateProps = {
@@ -31,9 +32,16 @@ export function ErrorState({
         bgColor="$material"
         boxShadow="$out"
         padding="$2"
-        className="w-full max-w-[440px]"
+        className="mac-window w-full max-w-[440px]"
+        data-active
       >
-        <TitleBar active title={code ? `biodays - ${code}` : "biodays"} className="win98-title" />
+        <TitleBar
+          active
+          title={code ? `biodays - ${code}` : "biodays"}
+          className="win98-title"
+          data-os-only="win"
+        />
+        <MacTitleBar title={code ? `biodays - ${code}` : "biodays"} />
         <div className="flex min-h-[96px] items-center gap-5 px-6 py-5">
           <DialogIcon variant={variant} />
           <div className="min-w-0">

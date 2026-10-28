@@ -9,7 +9,9 @@ import { Star } from "@react95/icons/Star";
 import { useRouter } from "next/navigation";
 import { type ReactElement, useState } from "react";
 
+import { MacIconHappyMac } from "@/components/mac/icons";
 import { useDesktopDrag } from "@/components/win/use-desktop-drag";
+import { setOsTheme } from "@/hooks/use-os-theme";
 import { getRandomStory } from "@/lib/api";
 import { DOCS_URL } from "@/lib/site";
 
@@ -71,6 +73,13 @@ export function DesktopIcons({ archiveOpen, onReopenArchive, className }: Deskto
       hint: archiveOpen ? "打开完整归档页" : "重新打开「最近归档」窗口",
     },
     {
+      id: "lab",
+      label: "实验室手册",
+      icon: <HelpBook variant="32x32_4" width={32} height={32} aria-hidden />,
+      onOpen: () => router.push("/lab"),
+      hint: "浏览技术解读、实验 Protocol 与实验室技巧",
+    },
+    {
       id: "random",
       label:
         randomState === "pending" ? "请稍候…" : randomState === "error" ? "获取失败！" : "随机一篇",
@@ -78,6 +87,13 @@ export function DesktopIcons({ archiveOpen, onReopenArchive, className }: Deskto
       onOpen: openRandom,
       hint: "随机打开一篇故事",
       disabled: randomState === "pending",
+    },
+    {
+      id: "theme",
+      label: "切换到 Mac",
+      icon: <MacIconHappyMac aria-hidden />,
+      onOpen: () => setOsTheme("mac"),
+      hint: "切换并记住 Mac 主题",
     },
     {
       id: "feedback",

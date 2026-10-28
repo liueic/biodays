@@ -11,7 +11,7 @@
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
     "prepare:assets": "bun run content:check && bun scripts/prepare-assets.mjs",
-    "content:check": "bun scripts/content.mjs",
+    "content:check": "bun scripts/content.mjs && bun scripts/lab-content.mjs",
     "test": "bun test tests --timeout 20000",
     "test:e2e": "playwright test",
     "admin:create": "bun scripts/create-admin.ts"

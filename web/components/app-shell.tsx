@@ -1,8 +1,8 @@
+import { OsChrome } from "@/components/os-chrome";
 import { Providers } from "@/components/providers";
-import { DesktopTaskbar } from "@/components/win/taskbar";
 
 /**
- * Shared Win98 desktop chrome. Both root layouts use it, but only the reading
+ * Shared desktop chrome for both OS skins. Both route groups use it, but only the reading
  * layout loads analytics scripts.
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div>{children}</div>
         <div aria-hidden className="grow-[618] basis-0" />
       </div>
-      <DesktopTaskbar />
+      <OsChrome />
     </Providers>
   );
 }

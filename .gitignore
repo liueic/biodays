@@ -34,6 +34,7 @@ __pycache__/
 .env
 .zcode/*
 web/content/index.json
+web/content/lab-index.json
 web/test-results/
 web/playwright-report/
 supabase/.temp/

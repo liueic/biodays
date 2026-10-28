@@ -12,6 +12,7 @@ import {
   useIsClosed,
   useWindows,
 } from "@/components/win/window-store";
+import { useOsTheme } from "@/hooks/use-os-theme";
 
 type Options = {
   /** Stable id shared with the taskbar button and the window store. */
@@ -33,9 +34,11 @@ export function useWindowFrame<T extends HTMLElement>({
   reopenOnMount = false,
 }: Options) {
   const closed = useIsClosed(id);
+  const theme = useOsTheme();
   const desktop = useWindows();
   const minimized = desktop.windows.find((item) => item.id === id)?.minimized ?? false;
   const [maximized, setMaximized] = useState(false);
+  const [shaded, setShaded] = useState(false);
   const active = desktop.activeWindow === id;
   const iconRef = useRef(icon);
   iconRef.current = icon;
@@ -44,6 +47,7 @@ export function useWindowFrame<T extends HTMLElement>({
     id,
     handle: ".window-drag-handle",
     cancel: "button, a",
+    outline: theme === "mac",
     disabled: maximized || minimized || closed,
   });
 
@@ -63,6 +67,8 @@ export function useWindowFrame<T extends HTMLElement>({
     closed,
     minimized,
     maximized,
+    shaded,
+    toggleShade: () => setShaded((value) => !value),
     /** Hide while closed or minimized. */
     hidden: closed || minimized,
     minimize: () => minimizeWindow(id),

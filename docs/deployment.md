@@ -39,7 +39,26 @@
 
 该迁移清理后，旧应用的配置读取方式已不兼容，不能直接回滚到依赖后台密钥的版本。若需要回滚，应先部署兼容环境变量的旧版补丁，或使用受控备份恢复旧配置；不要将密文或密钥写入 Git。
 
-在本地可信终端配置生产项目的服务端变量，通过 `BIODAYS_ADMIN_EMAIL`、`BIODAYS_ADMIN_PASSWORD` 执行 `cd web && bun run admin:create`。脚本不会输出密码。创建后移除密码变量。已有 Supabase 用户的 UUID 可由 SQL editor 加入 `biodays_admins`；用户 metadata 不授予权限。
+在本地可信终端配置目标项目的服务端变量，通过 `BIODAYS_ADMIN_EMAIL` 执行 `cd web && proto run bun -- run admin:create`。默认不设密码，用于 GitHub 登录；若需要密码登录，另设至少 12 位的 `BIODAYS_ADMIN_PASSWORD`。脚本不会输出密码，创建后移除密码配置。已有 Supabase 用户的 UUID 可由 SQL editor 加入 `biodays_admins`；用户 metadata 不授予权限。
+
+## GitHub 管理员登录
+
+后台通过 Supabase Auth 进行 GitHub OAuth 登录，登录成功后仍验证 `biodays_admins` 成员资格。GitHub 登录成功不会自动授予管理员权限。邮箱密码登录保留给设置过密码的管理员。
+
+1. 在 [GitHub → Settings → Developer settings → OAuth Apps → New OAuth App](https://github.com/settings/applications/new) 创建 OAuth App。Application name 填 `Biodays Admin`，Homepage URL 填实际站点地址（当前生产地址为 `https://biodays.vercel.app`），Authorization callback URL 填 Supabase GitHub Provider 页面显示的 Callback URL（通常是 `https://<项目ID>.supabase.co/auth/v1/callback`），不用开启 Device Flow。注册后复制 Client ID，并生成 Client Secret。
+2. 在 Supabase 的 **Authentication → Sign In / Providers → GitHub** 开启 GitHub Provider，填写上一步的 Client ID 和 Client Secret 并保存。这两个值只配置在 Supabase，无需额外放到 Vercel。应用使用默认的 `user:email` 身份权限，不申请仓库或组织权限。
+3. 在 Supabase **Authentication → URL Configuration** 设置 Site URL，并把站点的 `https://<站点域名>/auth/callback` 加入 Redirect URLs。本地和每个预览站点也要加入对应的回调地址。生产使用准确地址；预览只授权本项目需要的域名。Vercel 的 `BIODAYS_SITE_URL` 如已设置，必须与实际访问源一致。
+4. 保持公开注册关闭，先预创建管理员。在 [GitHub → Settings → Emails](https://github.com/settings/emails) 确认主邮箱已验证，将这个邮箱设为 `BIODAYS_ADMIN_EMAIL`，不要填 GitHub 用户名或提交代码使用的 `noreply` 地址。将目标 Supabase 的 `SUPABASE_URL`、`SUPABASE_SECRET_KEY` 和该邮箱填入本地 `web/.env.local`，不填写 `BIODAYS_ADMIN_PASSWORD`，在 `web/` 执行 `proto run bun -- run admin:create`。脚本会确认邮箱并加入管理员表，Supabase 会将相同已验证邮箱的 GitHub 身份关联到该账号。GitHub 邮箱可以保持不公开。若账号已存在，不要重复运行创建脚本；先在 Supabase **Authentication → Users** 核对该用户，再在 SQL editor 加入其 UUID：
+
+   ```sql
+   insert into public.biodays_admins (user_id)
+   values ('Authentication → Users 中该用户的 UUID')
+   on conflict (user_id) do nothing;
+   ```
+
+5. 从 `/admin/login` 点击「使用 GitHub 账号登录」。回调使用 PKCE 验证，并只跳转到本站固定的后台页面；非管理员会退出当前会话。管理员仍需保护好 GitHub 账号，建议开启 Passkey 或两步验证。
+
+GitHub Provider 和两级回调地址的配置见 [Supabase GitHub 登录文档](https://supabase.com/docs/guides/auth/social-sign-in/auth-github)。本地测试验证回调拒绝、来源校验和管理员权限，真实 GitHub 授权流程需要配置好 Provider 后在线验收。Vercel Production 与 Preview 的 Supabase 变量分别配置；Preview 应使用独立测试项目。
 
 ## Jev 与可疑反馈复核
 

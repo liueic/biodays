@@ -7,11 +7,14 @@
     "includes": [
       "**",
       "!**/.next",
+      "!**/.vercel",
       "!**/node_modules",
       "!**/app/fonts",
       "!**/next-env.d.ts",
       "!**/content/stories",
+      "!**/content/lab",
       "!**/content/index.json",
+      "!**/content/lab-index.json",
       "!**/test-results",
       "!**/playwright-report"
     ]

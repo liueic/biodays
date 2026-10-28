@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { HomeDesktop } from "@/components/home-desktop";
 import { getTodayStamp } from "@/lib/date";
+import { pickLabSection } from "@/lib/lab";
 import { getCachedRecent, getRequestToday } from "@/lib/server-api";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
 
@@ -38,5 +39,12 @@ export default async function HomePage() {
     getCachedRecent().catch(() => []),
   ]);
 
-  return <HomeDesktop today={today} recent={recent} stamp={stamp} />;
+  return (
+    <HomeDesktop
+      today={today}
+      recent={recent}
+      stamp={stamp}
+      initialLabSectionId={pickLabSection().id}
+    />
+  );
 }

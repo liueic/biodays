@@ -18,11 +18,20 @@ async function scan(directory) {
 for (const directory of ["app", "components", "hooks", "lib"])
   await scan(path.join(root, directory));
 const story = new Set();
-const dataDir = path.join(root, "content/stories");
-for (const name of (await readdir(dataDir)).filter((name) => name.endsWith(".md"))) {
-  for (const char of await readFile(path.join(dataDir, name), "utf8"))
-    if (!ui.has(char)) story.add(char);
+async function scanMarkdown(dir) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await scanMarkdown(fullPath);
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      for (const char of await readFile(fullPath, "utf8")) {
+        if (!ui.has(char)) story.add(char);
+      }
+    }
+  }
 }
+await scanMarkdown(path.join(root, "content/stories"));
+await scanMarkdown(path.join(root, "content/lab"));
 const source = await readFile(path.join(root, "fonts/fusion-pixel-source.woff2"));
 const output = path.join(root, "app/fonts");
 await mkdir(output, { recursive: true });
@@ -34,6 +43,15 @@ for (const [name, characters] of [
   await writeFile(path.join(output, `${name}.woff2`), font);
   console.log(`${name}: ${characters.size} characters, ${font.length} bytes`);
 }
+// Reused from the Mac frontend. Chinese continues to use the Fusion Pixel subsets.
+const chicagoSource = await readFile(path.join(root, "fonts/chicago-flf-source.ttf"));
+const chicagoChars = [
+  ...Array.from({ length: 95 }, (_, i) => String.fromCodePoint(i + 32)),
+  "·—–…",
+].join("");
+const chicago = await subsetFont(chicagoSource, chicagoChars, { targetFormat: "woff2" });
+await writeFile(path.join(output, "chicago.woff2"), chicago);
+console.log(`chicago: ${chicagoChars.length} characters, ${chicago.length} bytes`);
 // Disjoint unicode ranges prevent both files from being downloaded for the same glyph.
 const points = [...story].map((char) => char.codePointAt(0)).sort((a, b) => a - b);
 const ranges = [];

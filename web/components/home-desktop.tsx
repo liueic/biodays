@@ -3,18 +3,21 @@
 import { Bulb } from "@react95/icons/Bulb";
 
 import { ErrorState } from "@/components/error-state";
+import { LabHomePanel } from "@/components/lab/home-panel";
+import { DesktopIcons } from "@/components/os-desktop-icons";
 import { TodayStory } from "@/components/today-story";
-import { DesktopIcons } from "@/components/win/desktop-icons";
 import { RecentWindow } from "@/components/win/recent-window";
 import { Window } from "@/components/win/window";
 import { openWindow, RECENT_WINDOW, useIsClosed } from "@/components/win/window-store";
 import type { StorySummary, TodayResponse } from "@/lib/api";
 import type { TodayStamp } from "@/lib/date";
+import type { LabSectionID } from "@/lib/lab";
 
 type HomeDesktopProps = {
   today: TodayResponse | null;
   recent: StorySummary[];
   stamp: TodayStamp;
+  initialLabSectionId: LabSectionID;
 };
 
 /**
@@ -22,7 +25,7 @@ type HomeDesktopProps = {
  * and a small recent-archive window overlapping its bottom-right corner on wide
  * screens. On narrow screens everything stacks vertically.
  */
-export function HomeDesktop({ today, recent, stamp }: HomeDesktopProps) {
+export function HomeDesktop({ today, recent, stamp, initialLabSectionId }: HomeDesktopProps) {
   const recentClosed = useIsClosed(RECENT_WINDOW);
 
   return (
@@ -30,7 +33,7 @@ export function HomeDesktop({ today, recent, stamp }: HomeDesktopProps) {
       <DesktopIcons
         archiveOpen={!recentClosed}
         onReopenArchive={() => openWindow(RECENT_WINDOW)}
-        className="flex flex-wrap items-start gap-x-3 gap-y-4 px-1 pb-5 lg:absolute lg:top-0 lg:left-0 lg:flex-col lg:gap-6 lg:p-0"
+        className="os-desktop-icons flex flex-wrap items-start gap-x-3 gap-y-4 px-1 pb-5 lg:absolute lg:top-0 lg:left-0 lg:p-0"
       />
 
       <div className="lg:mx-auto lg:max-w-[640px]">
@@ -57,6 +60,8 @@ export function HomeDesktop({ today, recent, stamp }: HomeDesktopProps) {
           className="relative z-10 mx-auto mt-4 w-full max-w-[640px] lg:mx-0 lg:mr-4 lg:ml-auto lg:w-[340px] lg:-mt-16"
         />
       )}
+
+      <LabHomePanel initialSectionId={initialLabSectionId} />
     </main>
   );
 }

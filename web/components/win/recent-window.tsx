@@ -7,6 +7,8 @@ import { FileText } from "@react95/icons/FileText";
 import { Folder } from "@react95/icons/Folder";
 import Link from "next/link";
 
+import { MacIconDoc } from "@/components/mac/icons";
+import { MacTitleBar } from "@/components/mac/window";
 import { useWindowFrame } from "@/components/win/use-window-frame";
 import { RECENT_WINDOW } from "@/components/win/window-store";
 import type { StorySummary } from "@/lib/api";
@@ -33,15 +35,18 @@ export function RecentWindow({ stories, className }: RecentWindowProps) {
       {...frame.focusProps}
       as="section"
       aria-label="最近归档"
+      data-active={frame.active || undefined}
+      data-shaded={frame.shaded || undefined}
       bgColor="$material"
       boxShadow="$out"
       padding="$2"
-      className={cn(className, frame.hidden && "hidden")}
+      className={cn("mac-window", className, frame.hidden && "hidden")}
     >
       <TitleBar
         active={frame.active}
         title="最近归档"
         className="win98-title window-drag-handle"
+        data-os-only="win"
         data-inactive={frame.active ? undefined : ""}
         icon={<Folder variant="32x32_4" width={16} height={16} aria-hidden />}
       >
@@ -50,29 +55,46 @@ export function RecentWindow({ stories, className }: RecentWindowProps) {
           <TitleBar.Close aria-label="关闭" onClick={frame.close} />
         </TitleBar.OptionsBox>
       </TitleBar>
+      <MacTitleBar
+        title="最近归档"
+        shaded={frame.shaded}
+        onClose={frame.close}
+        onToggleShade={frame.toggleShade}
+      />
 
-      <Frame
-        as="ul"
-        boxShadow="$in"
-        bgColor="$inputBackground"
-        padding="$2"
-        className="mt-[2px] list-none"
-      >
-        {items.map((story) => (
-          <li key={story.id}>
-            <Link href={`/story/${story.id}`} className="recent-story-link" title={story.title}>
-              <FileText variant="16x16_4" aria-hidden className="shrink-0" />
-              <span className="whitespace-nowrap">{formatMonthDay(story.month, story.day)}</span>
-              <span className="truncate">{story.title}</span>
-            </Link>
-          </li>
-        ))}
-      </Frame>
+      <div className="os-window-body">
+        <Frame
+          as="ul"
+          boxShadow="$in"
+          bgColor="$inputBackground"
+          padding="$2"
+          className="mac-recent-list mt-[2px] list-none"
+        >
+          {items.map((story) => (
+            <li key={story.id}>
+              <Link
+                href={`/story/${story.id}`}
+                className="mac-recent-link recent-story-link"
+                title={story.title}
+              >
+                <span data-os-only="win">
+                  <FileText variant="16x16_4" aria-hidden className="shrink-0" />
+                </span>
+                <span data-os-only="mac">
+                  <MacIconDoc width={16} height={16} aria-hidden />
+                </span>
+                <span className="whitespace-nowrap">{formatMonthDay(story.month, story.day)}</span>
+                <span className="truncate">{story.title}</span>
+              </Link>
+            </li>
+          ))}
+        </Frame>
 
-      <div className="mt-2 flex items-center justify-end">
-        <Button as={Link} href="/archive" className="px-3">
-          全部归档(A)
-        </Button>
+        <div className="mac-recent-footer mt-2 flex items-center justify-end">
+          <Button as={Link} href="/archive" className="mac-button px-3">
+            全部归档(A)
+          </Button>
+        </div>
       </div>
     </Frame>
   );

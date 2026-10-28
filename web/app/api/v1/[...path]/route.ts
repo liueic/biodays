@@ -196,6 +196,22 @@ async function handle(request: NextRequest, ctx: { params: Promise<{ path: strin
         return json({ data: { accepted: true } }, 202);
       }
     }
+    if (path === "admin/login/github" && method === "POST") {
+      sameOrigin(request);
+      await rateLimit("login", [clientIP(request)], 10, 50);
+      const auth = await authClient();
+      const origin = new URL(process.env.BIODAYS_SITE_URL || request.url).origin;
+      const { data, error } = await auth.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo: `${origin}/auth/callback`,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error || !data.url)
+        throw new HttpError(503, "OAUTH_UNAVAILABLE", "GitHub 登录暂不可用，请稍后重试。");
+      return json({ data: { url: data.url } });
+    }
     if (path === "admin/login" && method === "POST") {
       sameOrigin(request);
       const body = await readBody(request);

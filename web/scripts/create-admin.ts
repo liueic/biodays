@@ -3,10 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 const url = process.env.SUPABASE_URL,
   key = process.env.SUPABASE_SECRET_KEY;
 const email = process.env.BIODAYS_ADMIN_EMAIL,
-  password = process.env.BIODAYS_ADMIN_PASSWORD;
-if (!url || !key || !email || !password || password.length < 12)
+  password = process.env.BIODAYS_ADMIN_PASSWORD || undefined;
+if (!url || !key || !email || (password !== undefined && password.length < 12))
   throw new Error(
-    "Set SUPABASE_URL, SUPABASE_SECRET_KEY, BIODAYS_ADMIN_EMAIL and a BIODAYS_ADMIN_PASSWORD of at least 12 characters.",
+    "Set SUPABASE_URL, SUPABASE_SECRET_KEY and BIODAYS_ADMIN_EMAIL. An optional BIODAYS_ADMIN_PASSWORD must have at least 12 characters; omit it for GitHub-only login.",
   );
 const client = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 const result = await client.auth.admin.createUser({ email, password, email_confirm: true });

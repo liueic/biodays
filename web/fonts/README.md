@@ -15,3 +15,9 @@ content can fall back to system fonts. Run `bun run dev` or `bun run build` norm
 
 `app/react95-global.css` preserves React95 10.0.6's reset and classic scrollbars,
 while using these subsets instead of embedding the unused MS Sans Serif TTFs.
+
+The classic Mac frontend's `chicago-flf-source.ttf` is reused for Latin UI text.
+Its original public-domain notice is preserved in
+`../public/licenses/chicagoflf/README.ChicagoFLF.txt`. The asset build generates
+`app/fonts/chicago.woff2`; Chinese falls back to Fusion Pixel and long-form
+reading retains the existing serif font stack.

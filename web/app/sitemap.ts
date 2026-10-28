@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-
+import { LAB_SECTIONS, labArticles } from "@/lib/lab";
 import { getCachedSitemapStories } from "@/lib/server-api";
 import { SITE_URL } from "@/lib/site";
 
@@ -26,6 +26,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.8,
     },
+    {
+      url: `${SITE_URL}/lab`,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
+    ...LAB_SECTIONS.map((section) => ({
+      url: `${SITE_URL}/lab/${section.id}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    })),
+    ...labArticles.map((article) => ({
+      url: `${SITE_URL}/lab/${article.section}/${article.id}`,
+      lastModified: now,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
     {
       url: `${SITE_URL}/about`,
       lastModified: now,

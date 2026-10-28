@@ -1,0 +1,595 @@
+/* Mac OS 8/9 "Platinum" chrome. All selectors are scoped to [data-os="mac"] components
+   (mac-* classes only exist in the Mac tree), so this file is inert under the Win98 theme.
+   Rules are unlayered on purpose: they must beat Tailwind utilities, same as globals.css. */
+
+/* ---------- Menu bar ---------- */
+
+[data-os="mac"] .mac-menu-bar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  height: calc(22px + env(safe-area-inset-top, 0px));
+  padding: calc(1px + env(safe-area-inset-top, 0px)) 8px 1px;
+  background: #fff;
+  border-bottom: 1px solid #000;
+}
+
+[data-os="mac"] .mac-menu-bar-left,
+[data-os="mac"] .mac-menu-bar-right {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+[data-os="mac"] .mac-app-menu {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+[data-os="mac"] .mac-menu {
+  position: relative;
+}
+
+[data-os="mac"] .mac-menu-trigger {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  color: #000;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+[data-os="mac"] .mac-menu-trigger:hover,
+[data-os="mac"] .mac-menu-trigger:focus-visible,
+[data-os="mac"] .mac-menu-trigger[aria-expanded="true"] {
+  background: #000;
+  color: #fff;
+  outline: none;
+}
+
+[data-os="mac"] .mac-app-menu-link[aria-current="page"] {
+  font-weight: 700;
+}
+
+[data-os="mac"] .mac-menu-clock {
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+[data-os="mac"] .mac-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 180px;
+  margin: 0;
+  padding: 2px;
+  background: #fff;
+  border: 1px solid #000;
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+  list-style: none;
+}
+
+[data-os="mac"] .mac-window-menu {
+  right: 0;
+  left: auto;
+  max-width: min(320px, 80vw);
+}
+
+[data-os="mac"] .mac-menu-item {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 0;
+  background: none;
+  color: #000;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+[data-os="mac"] .mac-window-menu-icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+[data-os="mac"] .mac-menu-item:hover,
+[data-os="mac"] .mac-menu-item:focus-visible {
+  background: #000;
+  color: #fff;
+  outline: none;
+}
+
+[data-os="mac"] .mac-menu-item:hover svg,
+[data-os="mac"] .mac-menu-item:focus-visible svg {
+  filter: invert(1);
+}
+
+[data-os="mac"] .mac-menu-item.is-active {
+  font-weight: 700;
+}
+
+[data-os="mac"] .mac-menu-item-disabled {
+  color: #777;
+}
+
+[data-os="mac"] .mac-menu-item-disabled:hover {
+  background: none;
+  color: #777;
+}
+
+[data-os="mac"] .mac-menu-separator {
+  height: 0;
+  margin: 3px 8px;
+  border-top: 1px solid #999;
+}
+
+[data-os="mac"] .mac-menu-check {
+  width: 12px;
+  flex: none;
+  text-align: center;
+}
+
+/* Right-aligned keyboard shortcut column in dropdowns (⌘W, ⌘Z …). */
+[data-os="mac"] .mac-menu-shortcut {
+  margin-left: auto;
+  padding-left: 20px;
+}
+
+[data-os="mac"] .mac-menu-item > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-os="mac"] .mac-window-menu-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+/* ---------- Platinum window ---------- */
+
+[data-os="mac"] .mac-window {
+  padding: 2px;
+  background: #dddddd;
+  border: 1px solid #3a3a3a;
+  box-shadow:
+    inset 1px 1px 0 #ffffff,
+    inset -1px -1px 0 #8a8a8a,
+    6px 6px 0 rgba(0, 0, 0, 0.35);
+  color: #000;
+}
+
+[data-os="mac"] .mac-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 3px;
+}
+
+[data-os="mac"] .mac-titlebar-stripes {
+  flex: 1 1 0;
+  align-self: stretch;
+  min-width: 8px;
+}
+
+[data-os="mac"] .mac-window[data-active] .mac-titlebar-stripes {
+  background: repeating-linear-gradient(180deg, #f8f8f8 0, #f8f8f8 2px, #c8c8c8 2px, #c8c8c8 4px);
+  box-shadow:
+    inset 1px 0 0 #fff,
+    inset -1px 0 0 #fff;
+}
+
+[data-os="mac"] .mac-titlebar-title {
+  max-width: 60%;
+  overflow: hidden;
+  padding: 0 4px;
+  background: #dddddd;
+  color: #777;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-os="mac"] .mac-window[data-active] .mac-titlebar-title {
+  color: #000;
+}
+
+/* The little square boxes: close (left), zoom and collapse (right). They invert
+   while pressed, exactly like the classic ones. */
+[data-os="mac"] .mac-titlebox {
+  position: relative;
+  width: 13px;
+  height: 13px;
+  flex: none;
+  padding: 0;
+  background: linear-gradient(180deg, #f8f8f8, #dadada);
+  border: 1px solid #444;
+  box-shadow:
+    inset 1px 1px 0 #fff,
+    inset -1px -1px 0 #a8a8a8;
+}
+
+[data-os="mac"] .mac-titlebox:active {
+  filter: invert(1);
+}
+
+[data-os="mac"] .mac-zoombox::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border: 1px solid #444;
+  background: linear-gradient(135deg, #f4f4f4, #cfcfcf);
+}
+
+[data-os="mac"] .mac-collapsebox::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  left: 2px;
+  height: 3px;
+  background: #444;
+  box-shadow: 0 1px 0 #fff;
+}
+
+/* WindowShade: the body rolls up into the title bar. */
+[data-os="mac"] .mac-window-shade {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 160ms ease-out;
+}
+
+[data-os="mac"] .mac-window[data-shaded] .mac-window-shade {
+  grid-template-rows: 0fr;
+}
+
+[data-os="mac"] .mac-window-body {
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-os="mac"] .mac-window-content {
+  margin: 2px 0 0;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #6a6a6a;
+  box-shadow:
+    inset 1px 1px 0 #b5b5b5,
+    inset -1px -1px 0 #f0f0f0;
+}
+
+[data-os="mac"] .mac-window-content.mail-window-content {
+  padding: 0;
+}
+
+@media (min-width: 640px) {
+  [data-os="mac"] .mac-window-content {
+    padding: 24px;
+  }
+
+  [data-os="mac"] .mac-window-content.mail-window-content {
+    padding: 0;
+  }
+}
+
+[data-os="mac"] .mac-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: 1px solid #8a8a8a;
+  border-bottom: 0;
+  background: #d5d5d5;
+  box-shadow:
+    inset 1px 1px 0 #fff,
+    inset -1px 0 0 #fff;
+}
+
+[data-os="mac"] .mac-toolbar-label {
+  flex: none;
+  margin-left: 4px;
+  color: #333;
+}
+
+[data-os="mac"] .mac-address {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 120px;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  background: #fff;
+  border: 1px solid #777;
+  box-shadow:
+    inset 1px 1px 0 #444,
+    inset -1px -1px 0 #eee;
+}
+
+[data-os="mac"] .mac-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 12px 2px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff, #e4e4e4 55%, #cdcdcd);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    1px 1px 0 rgba(0, 0, 0, 0.25);
+  color: #000;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+[data-os="mac"] .mac-button:hover {
+  background: linear-gradient(180deg, #ffffff, #ececec 55%, #d8d8d8);
+}
+
+[data-os="mac"] .mac-button:active {
+  background: linear-gradient(180deg, #b8b8b8, #d0d0d0);
+  box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+[data-os="mac"] .mac-window-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 3px 8px 2px;
+  border-top: 1px solid #a5a5a5;
+  box-shadow: inset 0 1px 0 #fff;
+  color: #444;
+  font-size: 11px;
+  text-shadow: 0 1px 0 #fff;
+}
+
+[data-os="mac"] .mac-window-status-cell {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  box-shadow: none;
+}
+
+[data-os="mac"] .mac-window-status-cell + .mac-window-status-cell {
+  padding-left: 8px;
+  border-left: 1px solid #a5a5a5;
+  box-shadow: inset 1px 0 0 #fff;
+}
+
+/* Zoomed (classic "zoom box") window: fill the desktop below the menu bar. */
+[data-os="mac"] .mac-window.mac-maximized {
+  position: fixed;
+  z-index: 40;
+  inset: calc(24px + env(safe-area-inset-top, 0px)) 4px 4px;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-os="mac"] .mac-window.mac-maximized .mac-window-shade {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+[data-os="mac"] .mac-window.mac-maximized .mac-window-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-os="mac"] .mac-window.mac-maximized .mac-window-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ---------- Desktop icons ---------- */
+
+[data-os="mac"] .mac-desktop-icon {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  color: #000;
+  text-align: center;
+  cursor: pointer;
+}
+
+[data-os="mac"] .mac-desktop-icon-img {
+  display: inline-flex;
+  padding: 2px;
+}
+
+[data-os="mac"] .mac-desktop-icon-label {
+  padding: 0 3px;
+  background: #fff;
+  line-height: 1.3;
+}
+
+[data-os="mac"] .mac-desktop-icon[data-selected] .mac-desktop-icon-label,
+[data-os="mac"] .mac-desktop-icon:focus-visible .mac-desktop-icon-label {
+  background: #000;
+  color: #fff;
+}
+
+[data-os="mac"] .mac-desktop-icon:disabled .mac-desktop-icon-label {
+  color: #333;
+}
+
+/* Trash lives at the bottom-right corner of the desktop, like the real Finder. */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  [data-os="mac"] .mac-desktop-icon-mac-trash {
+    position: fixed;
+    right: 10px;
+    bottom: 10px;
+  }
+}
+
+/* ---------- Recent-archive window ---------- */
+
+[data-os="mac"] .mac-recent-list {
+  margin: 2px 0 0;
+  padding: 2px;
+  background: #fff;
+  border: 1px solid #6a6a6a;
+  box-shadow: inset 1px 1px 0 #b5b5b5;
+  list-style: none;
+}
+
+[data-os="mac"] .mac-recent-link {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  color: #000;
+  text-decoration: none;
+}
+
+[data-os="mac"] .mac-recent-link:hover,
+[data-os="mac"] .mac-recent-link:focus-visible {
+  background: #000;
+  color: #fff;
+  outline: none;
+}
+
+[data-os="mac"] .mac-recent-link:hover svg,
+[data-os="mac"] .mac-recent-link:focus-visible svg {
+  filter: invert(1);
+}
+
+/* Classic Finder selection: the icon inverts, the label gets a black plate. */
+[data-os="mac"] .mac-desktop-icon[data-selected] .mac-desktop-icon-img svg {
+  filter: invert(1);
+}
+
+[data-os="mac"] .mac-recent-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 4px 2px;
+}
+
+/* ---------- Outline dragging ---------- */
+
+[data-os="mac"] .mac-drag-outline {
+  position: fixed;
+  z-index: 100000;
+  border: 1px dotted #000;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* ---------- Shared tweaks under the Mac theme ---------- */
+
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  [data-os="mac"] .mac-desktop-icon {
+    touch-action: none;
+    user-select: none;
+  }
+}
+
+/* React95 components used inside page content (buttons, fieldsets, tags) pick up
+   Platinum grays instead of the Win95 palette so they sit well in a Platinum window. */
+[data-os="mac"] {
+  --r95-color-material: #dddddd;
+  --r95-color-borderLightest: #ffffff;
+  --r95-color-borderLight: #f0f0f0;
+  --r95-color-borderDark: #8a8a8a;
+  --r95-color-borderDarkest: #3a3a3a;
+  --r95-color-anchor: #333399;
+  --r95-color-anchorVisited: #551a8b;
+}
+
+/* Adapt the reference skin to the existing React95 frames without remounting content. */
+[data-os="mac"] .mac-window[data-shaded] > .os-window-body {
+  display: none;
+}
+
+[data-os="mac"] .mac-window.mac-maximized {
+  width: auto;
+}
+
+[data-os="mac"] .mac-window.mac-maximized[data-shaded] {
+  bottom: auto;
+}
+
+[data-os="mac"] .mac-window-content.mail-window-content {
+  background: var(--mail-material);
+}
+
+[data-os="mac"] .mac-menu-bar,
+.desktop-taskbar {
+  z-index: 100000;
+}
+
+/* All functional menus and the theme switch remain reachable on narrow screens. */
+@media (max-width: 639px) {
+  [data-os="mac"] .mac-menu-bar {
+    gap: 0;
+    padding-right: 2px;
+    padding-left: 2px;
+  }
+
+  [data-os="mac"] .mac-menu-trigger {
+    padding-inline: 5px;
+  }
+
+  [data-os="mac"] .mac-menu-clock {
+    display: none;
+  }
+
+  [data-os="mac"] .mac-menu-dropdown {
+    position: fixed;
+    top: calc(24px + env(safe-area-inset-top, 0px));
+    left: 4px;
+    max-width: calc(100vw - 8px);
+    max-height: calc(100svh - 40px - env(safe-area-inset-top, 0px));
+    overflow: auto;
+  }
+
+  [data-os="mac"] .mac-window-menu {
+    right: 4px;
+    left: auto;
+  }
+
+  [data-os="mac"] .mac-menu-item {
+    min-height: var(--mail-touch-target);
+  }
+}
+
+@media (min-width: 1024px) {
+  .os-desktop-icons {
+    display: grid;
+    grid-template-columns: repeat(2, 76px);
+    gap: 20px 12px;
+  }
+
+  [data-os="mac"] .mac-desktop-icons {
+    left: auto;
+    right: 0;
+  }
+}
