@@ -3,36 +3,23 @@
 import { useDraggable } from "@neodrag/react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
+import { useDesktopMode } from "@/hooks/use-desktop-mode";
+
 /** Where each draggable thing was dropped; survives client-side navigation (not a reload). */
 const positions = new Map<string, { x: number; y: number }>();
 
 /**
- * Start from the top-left corner during the server render. The drag library reads the
- * starting position while the module is evaluated, and the server has no idea where the
- * user left things — anything else would be a hydration mismatch.
+ * Start at the layout's origin on the server and on the first client render.
+ * Remembered offsets are restored after mounting, within the current workspace.
  */
 const ORIGIN = { x: 0, y: 0 };
 
 /** Windows start above the icons; every click on a window raises it above the others. */
 let topZ = 20;
 
-function bringToFront(element: HTMLElement) {
+export function bringToFront(element: HTMLElement) {
   topZ += 1;
   element.style.zIndex = String(topZ);
-}
-
-const DESKTOP_QUERY = "(min-width: 768px) and (hover: hover) and (pointer: fine)";
-
-function useIsDesktop() {
-  const [matches, setMatches] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia(DESKTOP_QUERY);
-    const update = () => setMatches(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return matches;
 }
 
 type Options = {
@@ -76,7 +63,12 @@ export function useDesktopDrag<T extends HTMLElement>({
   outlineRef.current = outline;
   const ghost = useRef<HTMLDivElement | null>(null);
   const dragStart = useRef(ORIGIN);
-  const enabled = useIsDesktop();
+  const enabled = useDesktopMode();
+  const [position, setPosition] = useState(ORIGIN);
+  const displayedPosition = enabled && !disabled ? position : ORIGIN;
+  const positionRef = useRef(displayedPosition);
+  positionRef.current = displayedPosition;
+  const reconcilePosition = useRef(() => {});
 
   function dropGhost() {
     ghost.current?.remove();
@@ -88,9 +80,10 @@ export function useDesktopDrag<T extends HTMLElement>({
     handle,
     cancel,
     grid,
-    bounds: "body",
+    bounds: ".desktop-workspace",
+    recomputeBounds: { dragStart: true, drag: true },
     disabled: !enabled || disabled,
-    defaultPosition: typeof window === "undefined" ? ORIGIN : (positions.get(id) ?? ORIGIN),
+    position: displayedPosition,
     threshold: { distance: 4 },
     onDragStart: ({ offsetX, offsetY }) => {
       dragging.current = true;
@@ -110,16 +103,24 @@ export function useDesktopDrag<T extends HTMLElement>({
       }
     },
     onDrag: ({ offsetX, offsetY }) => {
+      const next = { x: offsetX, y: offsetY };
+      positions.set(id, next);
+      setPosition(next);
       if (ghost.current) {
         ghost.current.style.translate = `${offsetX - dragStart.current.x}px ${offsetY - dragStart.current.y}px`;
       }
     },
     onDragEnd: ({ offsetX, offsetY }) => {
-      positions.set(id, { x: offsetX, y: offsetY });
+      const next = { x: offsetX, y: offsetY };
+      positions.set(id, next);
+      setPosition(next);
       dropGhost();
       // The click event follows pointerup synchronously; clear the flag right after it.
       setTimeout(() => {
         dragging.current = false;
+        // A resize can arrive before pointerup finishes, while the observer is
+        // still skipping the active drag. Recheck its bounds once the drag ends.
+        reconcilePosition.current();
       }, 0);
     },
   });
@@ -130,14 +131,51 @@ export function useDesktopDrag<T extends HTMLElement>({
     // Neodrag sets touch-action:none on the entire root even when disabled.
     // Only desktop icons need that; windows restrict dragging to their title bar.
     element.style.touchAction = enabled && !disabled && !handle ? "none" : "auto";
-    const position = enabled && !disabled ? (positions.get(id) ?? ORIGIN) : ORIGIN;
-    element.style.translate = `${position.x}px ${position.y}px`;
     if (!enabled || disabled) {
       dragging.current = false;
       ghost.current?.remove();
       ghost.current = null;
       element.style.visibility = "";
+      return;
     }
+
+    // Reconcile remembered offsets with the current layout after resizing, changing
+    // skins, restoring a window, or returning from the compact document mode.
+    const workspace = element.closest(".desktop-workspace");
+    if (!workspace) return;
+    const reconcile = () => {
+      if (dragging.current || !element.getClientRects().length) return;
+      const rect = element.getBoundingClientRect();
+      const bounds = workspace.getBoundingClientRect();
+      const originX = rect.left - positionRef.current.x;
+      const originY = rect.top - positionRef.current.y;
+      const previous = positions.get(id) ?? ORIGIN;
+      const minX = bounds.left - originX;
+      const minY = bounds.top - originY;
+      const next = {
+        x: Math.min(
+          Math.max(previous.x, minX),
+          Math.max(minX, bounds.right - originX - rect.width),
+        ),
+        y: Math.min(
+          Math.max(previous.y, minY),
+          Math.max(minY, bounds.bottom - originY - rect.height),
+        ),
+      };
+      positions.set(id, next);
+      setPosition((current) => (current.x === next.x && current.y === next.y ? current : next));
+    };
+    reconcilePosition.current = reconcile;
+    // Run after Neodrag applies the controlled translation for this render.
+    const frame = requestAnimationFrame(reconcile);
+    const observer = new ResizeObserver(reconcile);
+    observer.observe(workspace);
+    observer.observe(element);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      reconcilePosition.current = () => {};
+    };
   }, [enabled, disabled, handle, id]);
 
   // Remove a leaked outline if the element unmounts mid-drag.

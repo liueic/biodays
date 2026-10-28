@@ -67,19 +67,16 @@ export function closeWindow(id: string) {
 }
 
 export function openWindow(id: string) {
-  if (closed.delete(id)) emit();
-  else {
-    const item = windows.get(id);
-    if (!item) return;
-    windows.set(id, { ...item, minimized: false });
-    activeWindow = id;
-    emit();
-  }
+  closed.delete(id);
+  const item = windows.get(id);
+  if (item) windows.set(id, { ...item, minimized: false });
+  activeWindow = id;
+  emit();
 }
 
 export function registerWindow(id: string, title: string, icon: ReactElement) {
   windows.set(id, { id, title, icon, minimized: false });
-  activeWindow = id;
+  if (!activeWindow || id === MAIN_WINDOW) activeWindow = id;
   emit();
   return () => {
     windows.delete(id);

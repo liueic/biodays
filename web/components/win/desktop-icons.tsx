@@ -5,21 +5,13 @@ import { FileText } from "@react95/icons/FileText";
 import { Folder } from "@react95/icons/Folder";
 import { HelpBook } from "@react95/icons/HelpBook";
 import { Mail } from "@react95/icons/Mail";
-import { Star } from "@react95/icons/Star";
 import { useRouter } from "next/navigation";
 import { type ReactElement, useState } from "react";
 
-import { MacIconHappyMac } from "@/components/mac/icons";
 import { useDesktopDrag } from "@/components/win/use-desktop-drag";
-import { setOsTheme } from "@/hooks/use-os-theme";
-import { getRandomStory } from "@/lib/api";
-import { DOCS_URL } from "@/lib/site";
+import { MAIN_WINDOW, openWindow } from "@/components/win/window-store";
 
 type DesktopIconsProps = {
-  /** Whether the recent-archive preview window is currently open. */
-  archiveOpen: boolean;
-  /** Reopen the recent-archive preview window after it was closed. */
-  onReopenArchive: () => void;
   className?: string;
 };
 
@@ -37,23 +29,13 @@ type IconDef = {
  * Win95-style desktop icons. Single click selects; clicking the selected icon
  * again (which a double click naturally does) opens it. Enter behaves the same.
  */
-export function DesktopIcons({ archiveOpen, onReopenArchive, className }: DesktopIconsProps) {
+export function DesktopIcons({ className }: DesktopIconsProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
-  const [randomState, setRandomState] = useState<"idle" | "pending" | "error">("idle");
-
-  async function openRandom() {
-    if (randomState === "pending") return;
-    setRandomState("pending");
-    try {
-      const story = await getRandomStory();
-      router.push(`/story/${story.id}`);
-    } catch {
-      setRandomState("error");
-      setTimeout(() => setRandomState("idle"), 2000);
-      return;
-    }
-    setRandomState("idle");
+  function navigate(path: string) {
+    openWindow(MAIN_WINDOW);
+    if (path === "/feedback") window.location.assign(path);
+    else router.push(path);
   }
 
   const icons: IconDef[] = [
@@ -61,61 +43,37 @@ export function DesktopIcons({ archiveOpen, onReopenArchive, className }: Deskto
       id: "today",
       label: "今日故事",
       icon: <FileText variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: () => router.push("/"),
+      onOpen: () => navigate("/"),
       hint: "回到今日故事",
     },
     {
       id: "archive",
       label: "归档浏览",
       icon: <Folder variant="32x32_4" width={32} height={32} aria-hidden />,
-      // Preview closed -> reopen it on the desktop; already open -> go to the full archive page.
-      onOpen: () => (archiveOpen ? router.push("/archive") : onReopenArchive()),
-      hint: archiveOpen ? "打开完整归档页" : "重新打开「最近归档」窗口",
+      onOpen: () => navigate("/archive"),
+      hint: "浏览完整故事归档",
     },
     {
       id: "lab",
       label: "实验室手册",
       icon: <HelpBook variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: () => router.push("/lab"),
+      onOpen: () => navigate("/lab"),
       hint: "浏览技术解读、实验 Protocol 与实验室技巧",
-    },
-    {
-      id: "random",
-      label:
-        randomState === "pending" ? "请稍候…" : randomState === "error" ? "获取失败！" : "随机一篇",
-      icon: <Star variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: openRandom,
-      hint: "随机打开一篇故事",
-      disabled: randomState === "pending",
-    },
-    {
-      id: "theme",
-      label: "切换到 Mac",
-      icon: <MacIconHappyMac aria-hidden />,
-      onOpen: () => setOsTheme("mac"),
-      hint: "切换并记住 Mac 主题",
     },
     {
       id: "feedback",
       label: "灵感信箱",
       icon: <Mail variant="32x32_4" width={32} height={32} aria-hidden />,
       // Cross-group target: full page load so the recorder unloads.
-      onOpen: () => window.location.assign("/feedback"),
+      onOpen: () => navigate("/feedback"),
       hint: "匿名提交反馈、资源或纠错",
     },
     {
       id: "about",
       label: "关于本站",
       icon: <FileFind variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: () => router.push("/about"),
+      onOpen: () => navigate("/about"),
       hint: "了解 biodays 与数据来源",
-    },
-    {
-      id: "docs",
-      label: "API 文档",
-      icon: <HelpBook variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: () => window.open(DOCS_URL, "_blank", "noopener"),
-      hint: "在新标签页打开 Swagger API 文档",
     },
   ];
 
@@ -163,9 +121,9 @@ function DesktopIcon({
       data-selected={selected || undefined}
       disabled={item.disabled}
       title={`${item.hint}（双击打开，可拖动）`}
-      onClick={() => {
+      onClick={(event) => {
         if (wasDragged()) return;
-        if (selected) onOpen();
+        if (selected || event.detail === 0) onOpen();
         else onSelect();
       }}
     >

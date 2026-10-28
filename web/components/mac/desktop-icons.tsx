@@ -1,6 +1,5 @@
 "use client";
 
-import { Logo } from "@react95/icons/Logo";
 import { useRouter } from "next/navigation";
 import { type ReactElement, useState } from "react";
 
@@ -10,20 +9,12 @@ import {
   MacIconFolderColor,
   MacIconHappyMac,
   MacIconMail,
-  MacIconSparkle,
-  MacIconTrash,
 } from "@/components/mac/icons";
 import { useDesktopDrag } from "@/components/win/use-desktop-drag";
-import { setOsTheme } from "@/hooks/use-os-theme";
-import { getRandomStory } from "@/lib/api";
-import { DOCS_URL } from "@/lib/site";
+import { MAIN_WINDOW, openWindow } from "@/components/win/window-store";
 import { cn } from "@/lib/utils";
 
 type DesktopIconsProps = {
-  /** Whether the recent-archive preview window is currently open. */
-  archiveOpen: boolean;
-  /** Reopen the recent-archive preview window after it was closed. */
-  onReopenArchive: () => void;
   className?: string;
 };
 
@@ -43,23 +34,13 @@ type IconDef = {
  * Single click selects; clicking the selected icon again (which a double click
  * naturally does) opens it. Icons drag as dotted outlines, like the real Finder.
  */
-export function MacDesktopIcons({ archiveOpen, onReopenArchive, className }: DesktopIconsProps) {
+export function MacDesktopIcons({ className }: DesktopIconsProps) {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(null);
-  const [randomState, setRandomState] = useState<"idle" | "pending" | "error">("idle");
-
-  async function openRandom() {
-    if (randomState === "pending") return;
-    setRandomState("pending");
-    try {
-      const story = await getRandomStory();
-      router.push(`/story/${story.id}`);
-    } catch {
-      setRandomState("error");
-      setTimeout(() => setRandomState("idle"), 2000);
-      return;
-    }
-    setRandomState("idle");
+  function navigate(path: string) {
+    openWindow(MAIN_WINDOW);
+    if (path === "/feedback") window.location.assign(path);
+    else router.push(path);
   }
 
   const icons: IconDef[] = [
@@ -67,68 +48,36 @@ export function MacDesktopIcons({ archiveOpen, onReopenArchive, className }: Des
       id: "today",
       label: "今日故事",
       icon: <MacIconDoc aria-hidden />,
-      onOpen: () => router.push("/"),
+      onOpen: () => navigate("/"),
       hint: "回到今日故事",
     },
     {
       id: "archive",
       label: "归档浏览",
       icon: <MacIconFolderColor aria-hidden />,
-      // Preview closed -> reopen it on the desktop; already open -> go to the full archive page.
-      onOpen: () => (archiveOpen ? router.push("/archive") : onReopenArchive()),
-      hint: archiveOpen ? "打开完整归档页" : "重新打开「最近归档」窗口",
-    },
-    {
-      id: "random",
-      label:
-        randomState === "pending" ? "请稍候…" : randomState === "error" ? "获取失败！" : "随机一篇",
-      icon: <MacIconSparkle aria-hidden />,
-      onOpen: openRandom,
-      hint: "随机打开一篇故事",
-      disabled: randomState === "pending",
+      onOpen: () => navigate("/archive"),
+      hint: "浏览完整故事归档",
     },
     {
       id: "lab",
       label: "实验室手册",
       icon: <MacIconBook aria-hidden />,
-      onOpen: () => router.push("/lab"),
+      onOpen: () => navigate("/lab"),
       hint: "浏览技术解读、实验 Protocol 与实验室技巧",
-    },
-    {
-      id: "theme",
-      label: "切换到 Win98",
-      icon: <Logo variant="32x32_4" width={32} height={32} aria-hidden />,
-      onOpen: () => setOsTheme("win"),
-      hint: "切换并记住 Windows 98 主题",
     },
     {
       id: "feedback",
       label: "灵感信箱",
       icon: <MacIconMail aria-hidden />,
-      onOpen: () => window.location.assign("/feedback"),
+      onOpen: () => navigate("/feedback"),
       hint: "匿名提交反馈、资源或纠错",
     },
     {
       id: "about",
       label: "关于本站",
       icon: <MacIconHappyMac aria-hidden />,
-      onOpen: () => router.push("/about"),
+      onOpen: () => navigate("/about"),
       hint: "了解 biodays 与数据来源",
-    },
-    {
-      id: "docs",
-      label: "API 文档",
-      icon: <MacIconBook aria-hidden />,
-      onOpen: () => window.open(DOCS_URL, "_blank", "noopener"),
-      hint: "在新标签页打开 Swagger API 文档",
-    },
-    {
-      id: "mac-trash",
-      label: "废纸篓",
-      icon: <MacIconTrash aria-hidden />,
-      // The Trash is decorative: it just sits in the corner like the real one.
-      onOpen: () => {},
-      hint: "废纸篓",
     },
   ];
 
@@ -138,7 +87,6 @@ export function MacDesktopIcons({ archiveOpen, onReopenArchive, className }: Des
         <DesktopIcon
           key={item.id}
           item={item}
-          className={item.id === "mac-trash" ? "mac-desktop-icon-mac-trash" : undefined}
           selected={selected === item.id}
           onSelect={() => setSelected(item.id)}
           onOpen={() => {
@@ -179,11 +127,10 @@ function DesktopIcon({
       className={cn("mac-desktop-icon w-16 lg:w-[76px]", className)}
       data-selected={selected || undefined}
       disabled={item.disabled}
-      aria-label={item.id === "theme" ? "切换到 Windows 98" : undefined}
       title={`${item.hint}（双击打开，可拖动）`}
-      onClick={() => {
+      onClick={(event) => {
         if (wasDragged()) return;
-        if (selected) onOpen();
+        if (selected || event.detail === 0) onOpen();
         else onSelect();
       }}
     >

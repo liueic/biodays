@@ -2,7 +2,7 @@
 
 import { type ReactElement, useEffect, useRef, useState } from "react";
 
-import { useDesktopDrag } from "@/components/win/use-desktop-drag";
+import { bringToFront, useDesktopDrag } from "@/components/win/use-desktop-drag";
 import {
   closeWindow,
   focusWindow,
@@ -54,6 +54,10 @@ export function useWindowFrame<T extends HTMLElement>({
   useEffect(() => {
     if (reopenOnMount) openWindow(id);
   }, [id, reopenOnMount]);
+
+  useEffect(() => {
+    if (active && ref.current) bringToFront(ref.current);
+  }, [active, ref]);
 
   // Register with the taskbar while the window is open.
   useEffect(() => {

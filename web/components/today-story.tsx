@@ -5,6 +5,7 @@ import { Bulb } from "@react95/icons/Bulb";
 import Link from "next/link";
 import { useState } from "react";
 
+import { DailyRecommendations } from "@/components/lab/daily-recommendations";
 import { QuoteBlock } from "@/components/quote-block";
 import { RandomButton } from "@/components/random-button";
 import { StoryHistoryTracker } from "@/components/story-history-tracker";
@@ -12,14 +13,21 @@ import { Tag } from "@/components/win/tag";
 import { Window } from "@/components/win/window";
 import type { Story } from "@/lib/api";
 import { formatStoryDate, type TodayStamp } from "@/lib/date";
+import type { DailyLabRecommendations } from "@/lib/lab-recommendations";
 
 type TodayStoryProps = {
   initialStory: Story;
   isFallback: boolean;
   stamp: TodayStamp;
+  labRecommendations: DailyLabRecommendations;
 };
 
-export function TodayStory({ initialStory, isFallback, stamp }: TodayStoryProps) {
+export function TodayStory({
+  initialStory,
+  isFallback,
+  stamp,
+  labRecommendations,
+}: TodayStoryProps) {
   const [story, setStory] = useState(initialStory);
   const [shuffled, setShuffled] = useState(false);
 
@@ -72,6 +80,7 @@ export function TodayStory({ initialStory, isFallback, stamp }: TodayStoryProps)
           />
         </div>
       </article>
+      <DailyRecommendations recommendations={labRecommendations} />
     </Window>
   );
 }

@@ -2,11 +2,20 @@
 
 import { Logo } from "@react95/icons/Logo";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { MacIconAppleColor, MacIconFinder } from "@/components/mac/icons";
-import { closeWindow, MAIN_WINDOW, openWindow, useWindows } from "@/components/win/window-store";
+import {
+  closeWindow,
+  MAIN_WINDOW,
+  openWindow,
+  RECENT_WINDOW,
+  useWindows,
+} from "@/components/win/window-store";
+import { useDesktopMode } from "@/hooks/use-desktop-mode";
 import { setOsTheme } from "@/hooks/use-os-theme";
+import { useRandomStory } from "@/hooks/use-random-story";
 import { DOCS_URL } from "@/lib/site";
 import { cn } from "@/lib/utils";
 
@@ -25,8 +34,11 @@ type MenuEntry =
  * across the bar, like the real thing.
  */
 export function MacMenuBar() {
+  const pathname = usePathname();
+  const desktopPreview = useDesktopMode(1200);
   const desktop = useWindows();
   const [openMenu, setOpenMenu] = useState<MenuId | null>(null);
+  const random = useRandomStory(() => setOpenMenu(null));
   const [viewMode, setViewMode] = useState<"icon" | "name" | "date">("icon");
   const [clock, setClock] = useState("");
   const ref = useRef<HTMLElement>(null);
@@ -80,6 +92,22 @@ export function MacMenuBar() {
       { kind: "link", label: "实验室手册", href: "/lab" },
       { kind: "link", label: "灵感信箱", href: "/feedback" },
       { kind: "link", label: "关于本站", href: "/about" },
+      ...(pathname === "/" && desktopPreview
+        ? [
+            {
+              kind: "action" as const,
+              label: "最近归档",
+              onSelect: () => openWindow(RECENT_WINDOW),
+            },
+          ]
+        : []),
+      { kind: "separator" },
+      {
+        kind: "action",
+        label: random.label,
+        onSelect: random.openRandom,
+        disabled: random.pending,
+      },
       { kind: "separator" },
       {
         kind: "action",
@@ -173,7 +201,7 @@ export function MacMenuBar() {
             className="mac-menu-item"
             disabled={entry.disabled}
             onClick={() => {
-              setOpenMenu(null);
+              if (entry.onSelect !== random.openRandom) setOpenMenu(null);
               entry.onSelect();
             }}
           >
@@ -289,7 +317,7 @@ function BarMenu({
   children?: ReactNode;
 }) {
   return (
-    <div className="mac-menu">
+    <div className={`mac-menu mac-menu-${id}`}>
       <button
         type="button"
         className="mac-menu-trigger"

@@ -441,15 +441,6 @@
   color: #333;
 }
 
-/* Trash lives at the bottom-right corner of the desktop, like the real Finder. */
-@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
-  [data-os="mac"] .mac-desktop-icon-mac-trash {
-    position: fixed;
-    right: 10px;
-    bottom: 10px;
-  }
-}
-
 /* ---------- Recent-archive window ---------- */
 
 [data-os="mac"] .mac-recent-list {
@@ -505,7 +496,7 @@
 
 /* ---------- Shared tweaks under the Mac theme ---------- */
 
-@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   [data-os="mac"] .mac-desktop-icon {
     touch-action: none;
     user-select: none;
@@ -546,6 +537,16 @@
   z-index: 100000;
 }
 
+/* Keep application navigation and window controls; decorative Finder menus
+   yield their space before the bar can overflow on compact screens. */
+@media (max-width: 1023px) {
+  [data-os="mac"] .mac-menu-edit,
+  [data-os="mac"] .mac-menu-view,
+  [data-os="mac"] .mac-menu-special {
+    display: none;
+  }
+}
+
 /* All functional menus and the theme switch remain reachable on narrow screens. */
 @media (max-width: 639px) {
   [data-os="mac"] .mac-menu-bar {
@@ -578,18 +579,5 @@
 
   [data-os="mac"] .mac-menu-item {
     min-height: var(--mail-touch-target);
-  }
-}
-
-@media (min-width: 1024px) {
-  .os-desktop-icons {
-    display: grid;
-    grid-template-columns: repeat(2, 76px);
-    gap: 20px 12px;
-  }
-
-  [data-os="mac"] .mac-desktop-icons {
-    left: auto;
-    right: 0;
   }
 }

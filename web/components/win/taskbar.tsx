@@ -8,19 +8,31 @@ import { Folder } from "@react95/icons/Folder";
 import { HelpBook } from "@react95/icons/HelpBook";
 import { Logo } from "@react95/icons/Logo";
 import { Mail } from "@react95/icons/Mail";
-import { useRouter } from "next/navigation";
+import { Star } from "@react95/icons/Star";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { MacIconHappyMac } from "@/components/mac/icons";
-import { MAIN_WINDOW, openWindow, toggleWindow, useWindows } from "@/components/win/window-store";
+import {
+  MAIN_WINDOW,
+  openWindow,
+  RECENT_WINDOW,
+  toggleWindow,
+  useWindows,
+} from "@/components/win/window-store";
+import { useDesktopMode } from "@/hooks/use-desktop-mode";
 import { setOsTheme } from "@/hooks/use-os-theme";
+import { useRandomStory } from "@/hooks/use-random-story";
 import { DOCS_URL } from "@/lib/site";
 
 export function DesktopTaskbar() {
   const router = useRouter();
+  const pathname = usePathname();
+  const desktopPreview = useDesktopMode(1200);
 
   const desktop = useWindows();
   const [open, setOpen] = useState(false);
+  const random = useRandomStory(() => setOpen(false));
   const [clock, setClock] = useState("--:--");
   const ref = useRef<HTMLElement>(null);
 
@@ -94,7 +106,33 @@ export function DesktopTaskbar() {
                 </button>
               </li>
             ))}
+            {pathname === "/" && desktopPreview && (
+              <li>
+                <button
+                  type="button"
+                  className="menu-item flex w-full items-center gap-2 text-left"
+                  onClick={() => {
+                    setOpen(false);
+                    openWindow(RECENT_WINDOW);
+                  }}
+                >
+                  <Folder variant="32x32_4" />
+                  最近归档
+                </button>
+              </li>
+            )}
             <li className="start-menu-divider mt-1 pt-1">
+              <button
+                type="button"
+                className="menu-item flex w-full items-center gap-2 text-left"
+                disabled={random.pending}
+                onClick={random.openRandom}
+              >
+                <Star variant="32x32_4" />
+                <span aria-live="polite">{random.label}</span>
+              </button>
+            </li>
+            <li>
               <button
                 type="button"
                 className="menu-item flex w-full items-center gap-2 text-left"

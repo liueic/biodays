@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { HomeDesktop } from "@/components/home-desktop";
 import { getTodayStamp } from "@/lib/date";
-import { pickLabSection } from "@/lib/lab";
+import { getDailyLabRecommendations } from "@/lib/lab-recommendations";
 import { getCachedRecent, getRequestToday } from "@/lib/server-api";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/site";
 
@@ -44,7 +44,7 @@ export default async function HomePage() {
       today={today}
       recent={recent}
       stamp={stamp}
-      initialLabSectionId={pickLabSection().id}
+      labRecommendations={getDailyLabRecommendations(stamp)}
     />
   );
 }

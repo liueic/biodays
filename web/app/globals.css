@@ -169,9 +169,183 @@ body {
   padding-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
 }
 
+.desktop-workspace {
+  position: relative;
+  min-width: 0;
+}
+
+.app-shell-content {
+  min-width: 0;
+}
+
+/* Compact layouts have one document window and navigate through Start/File. */
+.os-desktop-icons,
+.home-recent-window {
+  display: none;
+}
+
+/* Explicit window state must win over flex layouts and either OS skin. */
+.os-window[hidden],
+.home-recent-window[hidden] {
+  display: none !important;
+}
+
 [data-os="mac"] #main {
   padding-top: calc(32px + env(safe-area-inset-top, 0px));
   padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* The workspace owns the viewport; every document owns its scrolling boundary. */
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  html {
+    height: 100%;
+    scrollbar-gutter: auto;
+  }
+
+  body:has(.desktop-workspace) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #main {
+    height: 100dvh;
+    min-height: 0;
+    padding: 16px 20px calc(44px + env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
+  }
+
+  [data-os="mac"] #main {
+    padding-top: calc(38px + env(safe-area-inset-top, 0px));
+    padding-bottom: 16px;
+  }
+
+  .desktop-workspace,
+  .app-shell-content,
+  .app-shell-content > main {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .app-shell-content {
+    margin-left: 104px;
+  }
+
+  [data-os="mac"] .app-shell-content {
+    margin-right: 104px;
+    margin-left: 0;
+  }
+
+  .app-shell-content > :where(main) > .os-window:not(.os-maximized) {
+    display: flex;
+    height: calc(100% - 32px);
+    max-height: calc(100% - 32px);
+    margin-block: 16px;
+    flex-direction: column;
+  }
+
+  .os-window-body {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .window-content {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .window-drag-handle,
+  .mac-toolbar,
+  .mac-window-status,
+  .mac-recent-footer {
+    flex-shrink: 0;
+  }
+
+  .home-desktop {
+    max-width: none;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .desktop-workspace .os-desktop-icons {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    grid-template-columns: 76px;
+    gap: 16px;
+  }
+
+  .home-main-window {
+    position: absolute;
+    inset: 16px 0;
+    width: auto;
+    max-width: 720px;
+    min-width: 0;
+    margin: 0 auto;
+  }
+
+  .home-main-window > .os-window:not(.os-maximized) {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: 100%;
+    margin: 0;
+    flex-direction: column;
+  }
+
+  [data-os="mac"] .desktop-workspace .os-desktop-icons {
+    right: 0;
+    left: auto;
+  }
+
+  [data-os="mac"] .mac-window[data-shaded]:not(.os-maximized) {
+    height: fit-content;
+  }
+}
+
+/* Add the optional preview only when the reading window can retain its width. */
+@media (min-width: 1200px) and (hover: hover) and (pointer: fine) {
+  .home-desktop[data-preview] .home-main-window {
+    right: 332px;
+  }
+
+  [data-os="mac"] .home-desktop[data-preview] .home-main-window {
+    right: 0;
+    left: 332px;
+  }
+
+  .home-recent-window {
+    position: absolute;
+    right: 0;
+    bottom: 16px;
+    display: flex;
+    width: 304px;
+    max-width: 304px;
+    max-height: calc(100% - 32px);
+    margin: 0;
+    flex-direction: column;
+  }
+
+  .home-recent-window .mac-recent-list {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  [data-os="mac"] .home-recent-window {
+    right: auto;
+    left: 0;
+  }
 }
 
 /* One content tree survives theme changes, including forms and scroll containers. */
@@ -261,7 +435,7 @@ fieldset > legend {
 }
 
 /* Title bar acts as the drag handle on desktop */
-@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   .window-drag-handle {
     cursor: move;
     touch-action: none;
@@ -386,6 +560,8 @@ button:disabled {
   bottom: calc(100% - 2px);
   background: #c3c7cb;
   color: #000;
+  max-height: calc(100dvh - 56px - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
 }
 
 .start-menu-divider {
@@ -422,7 +598,7 @@ button:disabled {
 }
 
 /* Desktop icons can be dragged around on wide screens */
-@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
   .desktop-icon {
     touch-action: none;
     user-select: none;
@@ -445,6 +621,10 @@ button:disabled {
   .win98-title button {
     width: 24px;
     height: 24px;
+  }
+
+  #desktop-start-menu .menu-item {
+    min-height: 40px;
   }
 
   .window-content :is(button, input, select) {
@@ -1430,6 +1610,80 @@ button:disabled {
   flex-wrap: wrap;
   gap: 6px;
   padding-bottom: 4px;
+}
+
+/* Compact handbook recommendations live inside the daily story's scroll boundary. */
+.daily-lab {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px dotted var(--mail-shadow);
+}
+
+.daily-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.daily-lab-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 10px;
+  border: 1px solid var(--mail-shadow);
+  background: var(--mail-info);
+  color: #000;
+  text-decoration: none;
+}
+
+.daily-lab-card:hover,
+.daily-lab-card:focus-visible {
+  border-color: var(--link);
+}
+
+.daily-lab-category {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mail-muted);
+  font-size: 11px;
+}
+
+.daily-lab-category svg {
+  flex-shrink: 0;
+}
+
+.daily-lab-card-title,
+.daily-lab-teaser {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.daily-lab-card-title {
+  margin-top: 6px;
+  color: var(--link);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.daily-lab-card:hover .daily-lab-card-title,
+.daily-lab-card:focus-visible .daily-lab-card-title {
+  text-decoration: underline;
+}
+
+.daily-lab-teaser {
+  margin-top: 6px;
+  color: var(--mail-muted);
+  line-height: 1.7;
+}
+
+@media (max-width: 639px) {
+  .daily-lab-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* The lab notebook uses the same folders, paper and inset borders as the desktop. */

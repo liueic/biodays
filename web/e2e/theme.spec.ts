@@ -5,13 +5,22 @@ const macAgent =
 const winAgent =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36";
 
+// Theme and window tests exercise drafts independently of deployment settings.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/v1/feedback/options", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    await route.fulfill({ response, json: { data: { ...payload.data, enabled: true } } });
+  });
+});
+
 test("switch icons preserve input, preference and navigation", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/admin/login");
-  const email = page.getByLabel("邮箱", { exact: true });
+  await page.goto("/feedback");
+  const email = page.locator("#feedback-email");
   await email.fill("draft@biodays.test");
-  await page.getByLabel("密码", { exact: true }).fill("unsent-password");
+  await page.locator("#feedback-content").fill("尚未提交的反馈正文");
   const inputNode = await email.elementHandle();
   await page.getByRole("button", { name: "切换到 Mac", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-os", "mac");
@@ -21,7 +30,7 @@ test("switch icons preserve input, preference and navigation", async ({ page }) 
   await page.getByRole("button", { name: "切换到 Windows 98", exact: true }).click();
   await expect(page.locator(".desktop-taskbar")).toBeVisible();
   await expect(email).toHaveValue("draft@biodays.test");
-  await expect(page.getByLabel("密码", { exact: true })).toHaveValue("unsent-password");
+  await expect(page.locator("#feedback-content")).toHaveValue("尚未提交的反馈正文");
   await page.getByRole("button", { name: "切换到 Mac", exact: true }).click();
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("data-os", "mac");
@@ -39,28 +48,34 @@ test("switch icons preserve input, preference and navigation", async ({ page }) 
   expect(errors).toEqual([]);
 });
 
-test("both desktop icon sets expose a working theme switch", async ({ page }, testInfo) => {
+test("both desktop icon sets keep the five destinations available across pages", async ({
+  page,
+  isMobile,
+}, testInfo) => {
+  test.skip(
+    isMobile,
+    "Compact layouts navigate through the system menus instead of desktop icons.",
+  );
   await page.goto("/");
+  const icons = page.getByRole("navigation", { name: "桌面图标" });
+  await expect(icons.getByRole("button")).toHaveCount(5);
+  await icons.getByRole("button", { name: "实验室手册", exact: true }).dblclick();
+  await expect(page).toHaveURL(/\/lab$/);
+  await expect(icons.getByRole("button")).toHaveCount(5);
+  await icons.getByRole("button", { name: "今日故事", exact: true }).dblclick();
+  await expect(page).toHaveURL(/\/$/);
+  await page.screenshot({ path: testInfo.outputPath("win-home.png"), fullPage: true });
   await page
     .locator(".desktop-taskbar")
     .getByRole("button", { name: "切换到 Mac", exact: true })
     .click();
-  await page
-    .getByRole("navigation", { name: "桌面图标" })
-    .getByRole("button", { name: "切换到 Windows 98", exact: true })
-    .dblclick();
-  await expect(page.locator("html")).toHaveAttribute("data-os", "win");
-  await page.screenshot({ path: testInfo.outputPath("win-home.png"), fullPage: true });
-  await page
-    .getByRole("navigation", { name: "桌面图标" })
-    .getByRole("button", { name: "切换到 Mac", exact: true })
-    .dblclick();
   await expect(page.locator("html")).toHaveAttribute("data-os", "mac");
-  await expect(
-    page
-      .getByRole("navigation", { name: "桌面图标" })
-      .getByRole("button", { name: "实验室手册", exact: true }),
-  ).toBeVisible();
+  await expect(icons.getByRole("button")).toHaveCount(5);
+  await icons.getByRole("button", { name: "关于本站", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/about$/);
+  await icons.getByRole("button", { name: "今日故事", exact: true }).dblclick();
+  await expect(page).toHaveURL(/\/$/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("mac-home.png"), fullPage: true });
 });
@@ -69,13 +84,13 @@ test("Mac window controls preserve content and can reopen a closed window", asyn
   page,
   isMobile,
 }) => {
-  await page.goto("/admin/login");
+  await page.goto("/feedback");
   await page.getByRole("button", { name: "切换到 Mac", exact: true }).click();
-  await page.getByLabel("邮箱", { exact: true }).fill("shade@biodays.test");
+  await page.locator("#feedback-email").fill("shade@biodays.test");
   await page.getByRole("button", { name: "折叠", exact: true }).click();
-  await expect(page.getByLabel("邮箱", { exact: true })).toBeHidden();
+  await expect(page.locator("#feedback-email")).toBeHidden();
   await page.getByRole("button", { name: "展开", exact: true }).click();
-  await expect(page.getByLabel("邮箱", { exact: true })).toHaveValue("shade@biodays.test");
+  await expect(page.locator("#feedback-email")).toHaveValue("shade@biodays.test");
   if (!isMobile) {
     const title = page.locator(".os-window .mac-titlebar-title");
     const before = await page.locator(".os-window").boundingBox();
@@ -104,7 +119,7 @@ test("Mac window controls preserve content and can reopen a closed window", asyn
   await page.getByRole("button", { name: "应用程序菜单", exact: true }).click();
   await page
     .locator(".mac-window-menu")
-    .getByRole("button", { name: /管理员登录/ })
+    .getByRole("button", { name: /灵感信箱/ })
     .click();
   await expect(page.locator(".os-window")).toBeVisible();
   await page.getByRole("button", { name: "关闭", exact: true }).click();
