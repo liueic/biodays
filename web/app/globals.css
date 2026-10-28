@@ -154,16 +154,6 @@ body {
   padding-block: 2px;
 }
 
-.reading pre code {
-  white-space: pre;
-  overflow-wrap: normal;
-}
-
-.inline-code {
-  white-space: break-spaces;
-  overflow-wrap: anywhere;
-}
-
 #main {
   min-width: 0;
   padding-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
@@ -402,6 +392,174 @@ body {
 
 .reading p {
   margin-bottom: 1em;
+}
+
+/* Tailwind resets document defaults; restore them only inside Markdown bodies. */
+.markdown-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  margin-block: 1.5em 0.65em;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.markdown-content > :first-child {
+  margin-top: 0;
+}
+
+.markdown-content h1 {
+  font-size: 1.6em;
+}
+
+.markdown-content h2 {
+  font-size: 1.4em;
+}
+
+.markdown-content h3 {
+  font-size: 1.2em;
+}
+
+.markdown-content :is(h4, h5, h6) {
+  font-size: 1em;
+}
+
+.markdown-content :is(ul, ol) {
+  margin-block: 0 1em;
+  padding-inline-start: 1.6em;
+}
+
+.markdown-content ul {
+  list-style-type: disc;
+}
+
+.markdown-content ol {
+  list-style-type: decimal;
+}
+
+.markdown-content li {
+  margin-block: 0.3em;
+}
+
+.markdown-content li > :is(ul, ol) {
+  margin-block: 0.4em;
+}
+
+.markdown-content li > p {
+  margin-bottom: 0.4em;
+}
+
+.markdown-content .task-list-item {
+  list-style: none;
+}
+
+.markdown-content :where(.task-list-item) > input {
+  margin-inline: -1.4em 0.5em;
+  vertical-align: middle;
+}
+
+.markdown-content blockquote {
+  margin-block: 1em;
+  border-inline-start: 3px solid var(--mail-shadow);
+  padding-inline-start: 1em;
+  color: var(--mail-muted);
+}
+
+.markdown-content a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdown-content a:focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+
+.markdown-content :is(strong, b) {
+  font-weight: 700;
+}
+
+.markdown-content :is(em, i) {
+  font-style: italic;
+}
+
+.markdown-content del {
+  text-decoration: line-through;
+}
+
+.markdown-content code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.markdown-content :not(pre) > code {
+  border: 1px solid var(--mail-grid-line);
+  padding: 0.1em 0.3em;
+  background: #f5f5f5;
+  white-space: break-spaces;
+}
+
+.markdown-content pre {
+  max-width: 100%;
+  margin-block: 1em;
+  overflow-x: auto;
+  border: 1px solid var(--mail-shadow);
+  padding: 12px;
+  background: #f5f5f5;
+  line-height: 1.6;
+}
+
+.markdown-content pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.markdown-content hr {
+  margin-block: 1.5em;
+  border-top: 1px solid var(--mail-shadow);
+}
+
+.markdown-content img {
+  max-width: 100%;
+  height: auto;
+  margin-block: 1em;
+}
+
+.markdown-table-scroll {
+  max-width: 100%;
+  margin-block: 1.25em;
+  overflow-x: auto;
+}
+
+.markdown-table-scroll:focus-visible {
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.93em;
+  line-height: 1.7;
+}
+
+.markdown-content :is(th, td) {
+  min-width: 9rem;
+  border: 1px solid var(--mail-shadow);
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+.markdown-content th {
+  background: var(--mail-material-light);
+  font-weight: 700;
+}
+
+.markdown-content tbody tr:nth-child(even) {
+  background: #f5f5f5;
 }
 
 .menu-item {

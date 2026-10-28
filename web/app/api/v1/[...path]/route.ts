@@ -2,7 +2,14 @@ import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
 import { ApiError, type StoryQuery } from "@/lib/api";
 import { clientIP, rateLimit } from "@/lib/backend/abuse";
-import { admin, authClient, csrfFor, requireCSRF, sameOrigin } from "@/lib/backend/auth";
+import {
+  admin,
+  authClient,
+  authOrigin,
+  csrfFor,
+  requireCSRF,
+  sameOrigin,
+} from "@/lib/backend/auth";
 import { check, db, HttpError, newID, rpc } from "@/lib/backend/db";
 import { turnstileEnvironment } from "@/lib/backend/deployment";
 import {
@@ -200,7 +207,7 @@ async function handle(request: NextRequest, ctx: { params: Promise<{ path: strin
       sameOrigin(request);
       await rateLimit("login", [clientIP(request)], 10, 50);
       const auth = await authClient();
-      const origin = new URL(process.env.BIODAYS_SITE_URL || request.url).origin;
+      const origin = authOrigin(request);
       const { data, error } = await auth.auth.signInWithOAuth({
         provider: "github",
         options: {
@@ -214,35 +221,7 @@ async function handle(request: NextRequest, ctx: { params: Promise<{ path: strin
     }
     if (path === "admin/login" && method === "POST") {
       sameOrigin(request);
-      const body = await readBody(request);
-      if (
-        typeof body.username !== "string" ||
-        typeof body.password !== "string" ||
-        body.username.length > 254 ||
-        body.password.length > 1024
-      )
-        throw new HttpError(400, "INVALID_PARAM", "邮箱或密码无效。");
-      await rateLimit("login", [clientIP(request)], 10, 50);
-      const auth = await authClient();
-      const result = await auth.auth.signInWithPassword({
-        email: body.username.trim(),
-        password: body.password,
-      });
-      if (result.error || !result.data.user)
-        throw new HttpError(401, "UNAUTHENTICATED", "邮箱或密码不正确。");
-      try {
-        await admin();
-      } catch (e) {
-        await auth.auth.signOut();
-        throw e;
-      }
-      return json({
-        data: {
-          username: result.data.user.email,
-          csrf_token: csrfFor(result.data.user.id),
-          expires_at: new Date((result.data.session?.expires_at ?? 0) * 1000).toISOString(),
-        },
-      });
+      throw new HttpError(410, "PASSWORD_LOGIN_DISABLED", "请使用 GitHub 账号登录。");
     }
     if (parts[0] === "admin") {
       const session = await admin(),

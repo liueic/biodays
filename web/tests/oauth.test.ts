@@ -1,92 +1,77 @@
 import { expect, test } from "bun:test";
-import { createClient, type User } from "@supabase/supabase-js";
-import { admin } from "@/lib/backend/auth";
+import { AuthSessionMissingError, createClient, type User } from "@supabase/supabase-js";
+import { admin, authOrigin } from "@/lib/backend/auth";
 
-test("a verified GitHub identity still needs database administrator membership", async () => {
-  let membership: "missing" | "present" | "error" = "missing";
-  let selectedUser = "";
+test("only a verified GitHub identity with an allowlisted immutable ID can administer", async () => {
+  const previous = process.env.BIODAYS_ADMIN_GITHUB_IDS;
+  process.env.BIODAYS_ADMIN_GITHUB_IDS = "69223323";
+  let verified = true;
   const user: User = {
     id: crypto.randomUUID(),
     email: "admin@example.com",
     aud: "authenticated",
     created_at: new Date().toISOString(),
     app_metadata: { provider: "github" },
-    // User-editable metadata must never authorize an administrator.
-    user_metadata: { role: "admin", is_admin: true },
+    user_metadata: { user_name: "liueic", provider_id: "69223323", role: "admin" },
+    identities: [],
   };
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch(request) {
-      const url = new URL(request.url);
-      if (url.pathname !== "/rest/v1/biodays_admins") return new Response(null, { status: 404 });
-      selectedUser = url.searchParams.get("user_id") ?? "";
-      if (membership === "error")
-        return Response.json({ message: "Database unavailable" }, { status: 403 });
-      return Response.json(membership === "present" ? [{ user_id: user.id }] : []);
-    },
+  const identity = {
+    id: "69223323",
+    user_id: user.id,
+    identity_id: crypto.randomUUID(),
+    provider: "github",
+    identity_data: { sub: "69223323", user_name: "liueic" },
+  };
+  const client = createClient("http://127.0.0.1:54321", "local-test-publishable-key", {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-  const previousURL = process.env.SUPABASE_URL;
-  const previousKey = process.env.SUPABASE_SECRET_KEY;
-  process.env.SUPABASE_URL = server.url.origin;
-  process.env.SUPABASE_SECRET_KEY = "local-test-service-key";
+  client.auth.getUser = async () =>
+    verified
+      ? { data: { user }, error: null }
+      : { data: { user: null }, error: new AuthSessionMissingError() };
   try {
-    const client = createClient(server.url.origin, "local-test-publishable-key", {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    client.auth.getUser = async () => ({ data: { user }, error: null });
+    // Names, email and user-editable metadata never grant access.
     await expect(admin(client)).rejects.toMatchObject({ status: 403, code: "FORBIDDEN" });
-    expect(selectedUser).toBe(`eq.${user.id}`);
-    membership = "present";
+    user.identities = [{ ...identity, id: "999000002" }];
+    await expect(admin(client)).rejects.toMatchObject({ status: 403 });
+    user.identities = [{ ...identity, provider: "google" }];
+    await expect(admin(client)).rejects.toMatchObject({ status: 403 });
+    user.identities = [{ ...identity, user_id: crypto.randomUUID() }];
+    await expect(admin(client)).rejects.toMatchObject({ status: 403 });
+    user.identities = [identity];
     expect((await admin(client)).user.id).toBe(user.id);
-    membership = "error";
+    identity.identity_data.user_name = "renamed-account";
+    expect((await admin(client)).user.id).toBe(user.id);
+    process.env.BIODAYS_ADMIN_GITHUB_IDS = "999000002";
+    await expect(admin(client)).rejects.toMatchObject({ status: 403 });
+    process.env.BIODAYS_ADMIN_GITHUB_IDS = "";
     await expect(admin(client)).rejects.toMatchObject({ status: 503 });
+    process.env.BIODAYS_ADMIN_GITHUB_IDS = "liueic";
+    await expect(admin(client)).rejects.toMatchObject({ status: 503 });
+    verified = false;
+    await expect(admin(client)).rejects.toMatchObject({ status: 401 });
   } finally {
-    if (previousURL === undefined) delete process.env.SUPABASE_URL;
-    else process.env.SUPABASE_URL = previousURL;
-    if (previousKey === undefined) delete process.env.SUPABASE_SECRET_KEY;
-    else process.env.SUPABASE_SECRET_KEY = previousKey;
-    server.stop(true);
+    if (previous === undefined) delete process.env.BIODAYS_ADMIN_GITHUB_IDS;
+    else process.env.BIODAYS_ADMIN_GITHUB_IDS = previous;
   }
 });
 
-test.skipIf(
-  !/^http:\/\/(127\.0\.0\.1|localhost):/.test(process.env.SUPABASE_URL ?? "") ||
-    !process.env.SUPABASE_SECRET_KEY,
-)("GitHub-only bootstrap creates an authorized account without a site password", async () => {
-  const client = createClient(
-    process.env.SUPABASE_URL ?? "",
-    process.env.SUPABASE_SECRET_KEY ?? "",
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
-  const email = `github-admin-${crypto.randomUUID()}@biodays.test`;
-  let userID: string | undefined;
+test("hosted authentication never redirects to a configured localhost", () => {
+  const previousURL = process.env.BIODAYS_SITE_URL;
+  const previousVercel = process.env.VERCEL;
+  process.env.VERCEL = "1";
+  const request = new Request("https://www.oneleaf.me/api/v1/admin/login/github");
   try {
-    const child = Bun.spawn([process.execPath, "run", "scripts/create-admin.ts"], {
-      env: { ...process.env, BIODAYS_ADMIN_EMAIL: email, BIODAYS_ADMIN_PASSWORD: "" },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect(await child.exited).toBe(0);
-    const users = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
-    expect(users.error).toBeNull();
-    const user = users.data.users.find((value) => value.email === email);
-    userID = user?.id;
-    expect(user?.email_confirmed_at).toBeTruthy();
-    expect(userID).toBeTruthy();
-    const membership = await client
-      .from("biodays_admins")
-      .select("user_id")
-      .eq("user_id", userID ?? "")
-      .single();
-    expect(membership.error).toBeNull();
-    expect(membership.data?.user_id).toBe(userID);
-    const passwordLogin = await client.auth.signInWithPassword({
-      email,
-      password: process.env.BIODAYS_ADMIN_PASSWORD || "NotAnAssignedPassword123!",
-    });
-    expect(passwordLogin.error).not.toBeNull();
+    process.env.BIODAYS_SITE_URL = "http://localhost:3000";
+    expect(() => authOrigin(request)).toThrow();
+    process.env.BIODAYS_SITE_URL = "https://www.oneleaf.me/";
+    expect(authOrigin(request)).toBe("https://www.oneleaf.me");
+    delete process.env.BIODAYS_SITE_URL;
+    expect(authOrigin(request)).toBe("https://www.oneleaf.me");
   } finally {
-    if (userID) await client.auth.admin.deleteUser(userID);
+    if (previousURL === undefined) delete process.env.BIODAYS_SITE_URL;
+    else process.env.BIODAYS_SITE_URL = previousURL;
+    if (previousVercel === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previousVercel;
   }
 });

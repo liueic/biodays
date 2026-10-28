@@ -166,15 +166,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
-export async function login(username: string, password: string): Promise<AdminSession> {
-  const response = await request<{ data: AdminSession }>("/admin/login", {
-    method: "POST",
-    body: JSON.stringify({ username, password }),
-  });
-  setCSRFToken(response.data.csrf_token);
-  return response.data;
-}
-
 export async function githubLogin(): Promise<string> {
   const response = await request<{ data: { url: string } }>("/admin/login/github", {
     method: "POST",

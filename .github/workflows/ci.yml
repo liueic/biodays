@@ -38,9 +38,9 @@ jobs:
         run: supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtime,logflare,vector,supavisor,mailpit > /tmp/supabase.log 2>&1
       - name: Export local test environment
         run: python3 scripts/local-test-env.py --github
-      - name: Create local admin and test business rules
+      - name: Create local identity fixture and test business rules
         working-directory: web
-        run: bun run admin:create && bun run test
+        run: bun run test:admin:create && bun run test
       - name: Production build without database credentials
         working-directory: web
         run: env -u SUPABASE_URL -u SUPABASE_SECRET_KEY -u SUPABASE_PUBLISHABLE_KEY bun run build

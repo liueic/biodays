@@ -1,6 +1,9 @@
 import { createHmac } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { signInLocalIdentity } from "./helpers/admin";
+
+const siteOrigin = process.env.BIODAYS_SITE_URL ?? "http://localhost:13000";
 
 test.skip(
   !/^http:\/\/(127\.0\.0\.1|localhost):/.test(process.env.SUPABASE_URL ?? "") ||
@@ -21,7 +24,7 @@ test("feedback, double opt-in, authenticated review, settings CAS and unsubscrib
   const db = createClient(process.env.SUPABASE_URL ?? "", process.env.SUPABASE_SECRET_KEY ?? "", {
     auth: { persistSession: false },
   });
-  const headers = { Origin: "http://localhost:13000" };
+  const headers = { Origin: siteOrigin };
   const input = {
     request_id: crypto.randomUUID(),
     kind: "issue",
@@ -62,24 +65,16 @@ test("feedback, double opt-in, authenticated review, settings CAS and unsubscrib
       await request.post("/api/v1/feedback/subscriptions/confirm", { headers, data: { token } })
     ).status(),
   ).toBe(200);
-  expect((await request.get(`/api/v1/admin/feedback/${id}`)).status()).toBe(401);
-  await page.goto("/admin/login");
-  await page.getByLabel("邮箱", { exact: true }).fill(process.env.BIODAYS_ADMIN_EMAIL ?? "");
-  await page.getByLabel("密码", { exact: true }).fill(process.env.BIODAYS_ADMIN_PASSWORD ?? "");
-  await page.getByRole("button", { name: "登录", exact: true }).click();
+  expect((await page.request.get(`/api/v1/admin/feedback/${id}`)).status()).toBe(401);
+  await signInLocalIdentity(page);
+  await page.goto("/admin/feedback");
   await expect(page).toHaveURL(/\/admin\/feedback$/);
-  const login = await request.post("/api/v1/admin/login", {
-    headers,
-    data: {
-      username: process.env.BIODAYS_ADMIN_EMAIL,
-      password: process.env.BIODAYS_ADMIN_PASSWORD,
-    },
-  });
-  expect(login.status()).toBe(200);
-  const csrf = (await login.json()).data.csrf_token,
+  const session = await page.request.get("/api/v1/admin/me");
+  expect(session.status()).toBe(200);
+  const csrf = (await session.json()).data.csrf_token,
     adminHeaders = { ...headers, "X-CSRF-Token": csrf };
-  const detail = (await (await request.get(`/api/v1/admin/feedback/${id}`)).json()).data;
-  const updated = await request.patch(`/api/v1/admin/feedback/${id}`, {
+  const detail = (await (await page.request.get(`/api/v1/admin/feedback/${id}`)).json()).data;
+  const updated = await page.request.patch(`/api/v1/admin/feedback/${id}`, {
     headers: adminHeaders,
     data: {
       version: detail.version,
@@ -116,10 +111,10 @@ test("feedback, double opt-in, authenticated review, settings CAS and unsubscrib
         .single()
     ).data,
   ).toEqual({ status: "cancelled", payload: null });
-  const initial = (await (await request.get("/api/v1/admin/settings")).json()).data;
+  const initial = (await (await page.request.get("/api/v1/admin/settings")).json()).data;
   const saves = await Promise.all(
     [true, false].map((enabled) =>
-      request.patch("/api/v1/admin/settings", {
+      page.request.patch("/api/v1/admin/settings", {
         headers: adminHeaders,
         data: { base_revision: initial.revision, subscriptions_enabled: enabled },
       }),
@@ -127,18 +122,20 @@ test("feedback, double opt-in, authenticated review, settings CAS and unsubscrib
   );
   expect(saves.map((r) => r.status()).sort()).toEqual([200, 409]);
   // Restore a deterministic default for the next browser project.
-  const current = (await (await request.get("/api/v1/admin/settings")).json()).data;
-  await request.patch("/api/v1/admin/settings", {
+  const current = (await (await page.request.get("/api/v1/admin/settings")).json()).data;
+  await page.request.patch("/api/v1/admin/settings", {
     headers: adminHeaders,
     data: { base_revision: current.revision, subscriptions_enabled: true },
   });
   expect(
-    (await request.post("/api/v1/admin/stories", { headers: adminHeaders, data: {} })).status(),
+    (
+      await page.request.post("/api/v1/admin/stories", { headers: adminHeaders, data: {} })
+    ).status(),
   ).toBe(410);
-  expect((await request.post("/api/v1/admin/logout", { headers: adminHeaders })).status()).toBe(
-    200,
-  );
-  expect((await request.get("/api/v1/admin/me")).status()).toBe(401);
+  expect(
+    (await page.request.post("/api/v1/admin/logout", { headers: adminHeaders })).status(),
+  ).toBe(200);
+  expect((await page.request.get("/api/v1/admin/me")).status()).toBe(401);
   const anon = createClient(
     process.env.SUPABASE_URL ?? "",
     process.env.SUPABASE_PUBLISHABLE_KEY ?? "",
@@ -211,10 +208,8 @@ test("deployment settings are read-only, business edits survive reload and inval
   const original = await db.from("biodays_settings").select("document").eq("id", true).single();
   expect(original.error).toBeNull();
   try {
-    await page.goto("/admin/login");
-    await page.getByLabel("邮箱", { exact: true }).fill(process.env.BIODAYS_ADMIN_EMAIL ?? "");
-    await page.getByLabel("密码", { exact: true }).fill(process.env.BIODAYS_ADMIN_PASSWORD ?? "");
-    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await signInLocalIdentity(page);
+    await page.goto("/admin/feedback");
     await expect(page).toHaveURL(/\/admin\/feedback$/);
     await page.goto("/admin/settings");
     await expect(page.getByRole("table", { name: "环境变量配置状态" })).toBeVisible();
@@ -242,7 +237,7 @@ test("deployment settings are read-only, business edits survive reload and inval
       { deployment: { source: "database" } },
     ]) {
       const response = await page.request.patch("/api/v1/admin/settings", {
-        headers: { Origin: "http://localhost:13000", "X-CSRF-Token": csrf },
+        headers: { Origin: siteOrigin, "X-CSRF-Token": csrf },
         data: { base_revision: current.revision, ...patch },
       });
       expect(response.status()).toBe(422);
@@ -262,7 +257,7 @@ test("deployment settings are read-only, business edits survive reload and inval
     await page.getByLabel("垃圾概率上限").fill("0.8");
     await page.getByLabel("每日调用上限", { exact: true }).fill("789");
     const concurrent = await page.request.patch("/api/v1/admin/settings", {
-      headers: { Origin: "http://localhost:13000", "X-CSRF-Token": csrf },
+      headers: { Origin: siteOrigin, "X-CSRF-Token": csrf },
       data: { base_revision: current.revision, ai_spam: { daily_limit: 654 } },
     });
     expect(concurrent.status()).toBe(200);
