@@ -3,7 +3,7 @@
 ## 环境与发布
 
 1. 在 Supabase 创建生产项目，以及独立的预览/测试项目。先在测试项目按文件名顺序执行 `supabase/migrations/*.sql`；已有项目只应用尚未执行的迁移。迁移仅管理 `biodays_` 前缀对象。
-2. Supabase Auth 开启 Email 密码登录，关闭全局新用户注册。不要关闭 Email provider，否则预先创建的管理员也无法登录。本地 `config.toml` 的 `auth.enable_signup=false` 与 `auth.email.enable_signup=true` 正是这一区别。
+2. Supabase Auth 开启 GitHub Provider，按下文配置两级回调和固定 GitHub ID 白名单。生产可关闭 Email Provider；本站不提供密码登录。本地配置仅用于隔离的身份与数据库测试。
 3. 在 Vercel 连接 GitHub 仓库，Root Directory 设置为 `web`，Node.js 24，使用 `web/vercel.json`。本地固定 24.22.1，CI / Vercel 跟随 24.x 补丁，构建日志输出实际版本。文章修改合并后自动构建，全部故事详情和归档预生成，首页与互动接口动态运行。
 4. 分别设置 Production 和 Preview 环境变量。`BIODAYS_SITE_URL` 必须是当前部署的访问源（协议和域名）；预览应使用自己的 URL，也可以不设置此变量，由 VERCEL_URL 自动解析，以便表单同源校验与邮件链接正确。不要让预览连接生产 Supabase。
 
@@ -13,7 +13,8 @@
 
 | 变量 | 用途 |
 |---|---|
-| `BIODAYS_SITE_URL` | canonical、邮件链接与同源校验，生产使用 HTTPS |
+| `BIODAYS_SITE_URL` | canonical、邮件链接与同源校验，生产为 `https://www.oneleaf.me` |
+| `BIODAYS_ADMIN_GITHUB_IDS` | GitHub 固定用户 ID 白名单；生产仅为 `69223323`（liueic），为空或非法时拒绝后台访问 |
 | `SUPABASE_URL` | 项目 URL |
 | `SUPABASE_PUBLISHABLE_KEY` | publishable key 或 anon key，用于服务端会话客户端 |
 | `SUPABASE_SECRET_KEY` | secret key 或 service_role key，仅服务端，禁止 NEXT_PUBLIC 前缀 |
@@ -39,26 +40,17 @@
 
 该迁移清理后，旧应用的配置读取方式已不兼容，不能直接回滚到依赖后台密钥的版本。若需要回滚，应先部署兼容环境变量的旧版补丁，或使用受控备份恢复旧配置；不要将密文或密钥写入 Git。
 
-在本地可信终端配置目标项目的服务端变量，通过 `BIODAYS_ADMIN_EMAIL` 执行 `cd web && proto run bun -- run admin:create`。默认不设密码，用于 GitHub 登录；若需要密码登录，另设至少 12 位的 `BIODAYS_ADMIN_PASSWORD`。脚本不会输出密码，创建后移除密码配置。已有 Supabase 用户的 UUID 可由 SQL editor 加入 `biodays_admins`；用户 metadata 不授予权限。
-
 ## GitHub 管理员登录
 
-后台通过 Supabase Auth 进行 GitHub OAuth 登录，登录成功后仍验证 `biodays_admins` 成员资格。GitHub 登录成功不会自动授予管理员权限。邮箱密码登录保留给设置过密码的管理员。
+后台只提供 GitHub 登录。每次后台请求通过 Supabase Auth 的 `getUser()` 验证会话，再检查返回的 GitHub identity 固定 ID。生产 `BIODAYS_ADMIN_GITHUB_IDS=69223323`，只允许 `liueic`。姓名、邮箱、可编辑的 user metadata 和旧 `biodays_admins` 成员记录都不授予权限。白名单改变后重新部署，现有会话的下一次请求也会按新名单校验；非白名单账号在回调中退出当前会话。
 
-1. 在 [GitHub → Settings → Developer settings → OAuth Apps → New OAuth App](https://github.com/settings/applications/new) 创建 OAuth App。Application name 填 `Biodays Admin`，Homepage URL 填实际站点地址（当前生产地址为 `https://biodays.vercel.app`），Authorization callback URL 填 Supabase GitHub Provider 页面显示的 Callback URL（通常是 `https://<项目ID>.supabase.co/auth/v1/callback`），不用开启 Device Flow。注册后复制 Client ID，并生成 Client Secret。
-2. 在 Supabase 的 **Authentication → Sign In / Providers → GitHub** 开启 GitHub Provider，填写上一步的 Client ID 和 Client Secret 并保存。这两个值只配置在 Supabase，无需额外放到 Vercel。应用使用默认的 `user:email` 身份权限，不申请仓库或组织权限。
-3. 在 Supabase **Authentication → URL Configuration** 设置 Site URL，并把站点的 `https://<站点域名>/auth/callback` 加入 Redirect URLs。本地和每个预览站点也要加入对应的回调地址。生产使用准确地址；预览只授权本项目需要的域名。Vercel 的 `BIODAYS_SITE_URL` 如已设置，必须与实际访问源一致。
-4. 保持公开注册关闭，先预创建管理员。在 [GitHub → Settings → Emails](https://github.com/settings/emails) 确认主邮箱已验证，将这个邮箱设为 `BIODAYS_ADMIN_EMAIL`，不要填 GitHub 用户名或提交代码使用的 `noreply` 地址。将目标 Supabase 的 `SUPABASE_URL`、`SUPABASE_SECRET_KEY` 和该邮箱填入本地 `web/.env.local`，不填写 `BIODAYS_ADMIN_PASSWORD`，在 `web/` 执行 `proto run bun -- run admin:create`。脚本会确认邮箱并加入管理员表，Supabase 会将相同已验证邮箱的 GitHub 身份关联到该账号。GitHub 邮箱可以保持不公开。若账号已存在，不要重复运行创建脚本；先在 Supabase **Authentication → Users** 核对该用户，再在 SQL editor 加入其 UUID：
+1. 在 [GitHub → OAuth Apps → New OAuth App](https://github.com/settings/applications/new) 创建 OAuth App。Application name 填 `Biodays Admin`，Homepage URL 填 `https://www.oneleaf.me`，**Authorization callback URL** 填 Supabase Provider 页面显示的地址：`https://uqhlfskucglmembrqfef.supabase.co/auth/v1/callback`。不用开启 Device Flow。此地址是 GitHub 回到 Supabase 的地址。
+2. 在 Supabase **Authentication → Sign In / Providers → GitHub** 开启 Provider，填写 GitHub Client ID 和 Client Secret。这两个值只配置在 Supabase，不放进 Vercel。应用使用默认的 `user:email` 身份权限，不申请仓库或组织权限。首次 GitHub 登录需要允许 Supabase 创建身份；可关闭不需要的 Email 和其他登录 Provider。后台仍只允许名单内的 GitHub ID，不需要预创建邮箱或设置网站密码。
+3. 在 Supabase **Authentication → URL Configuration** 把 **Site URL** 设为 `https://www.oneleaf.me`，**Redirect URLs** 加入准确的 `https://www.oneleaf.me/auth/callback`。这是 Supabase 回到本站的地址，和第 1 步的 GitHub 回调不同。`redirectTo` 未被允许时，Supabase 会回退到 Site URL；若那里仍是默认的 localhost，就会在登录后跳回本地。生产配置不要保留 localhost。独立本地/预览项目分别添加自己的 `/auth/callback` 地址。
+4. Vercel **Production** 设置 `BIODAYS_SITE_URL=https://www.oneleaf.me`、`BIODAYS_ADMIN_GITHUB_IDS=69223323`，以及该环境的三个 Supabase 变量，然后重新部署。Preview 不写入生产站点地址，使用自己的 URL 和独立 Supabase 项目。白名单变量只使用数字 ID，不填用户名；可通过 `gh api users/liueic --jq .id` 查询固定 ID。
+5. 访问 `https://www.oneleaf.me/admin/login`，点击「使用 GitHub 账号登录」。已有 GitHub 会话通常直接继续；需要时由 GitHub 处理登录和两步验证。本站不收集账号密码，旧的密码登录接口返回 410。回调通过 HttpOnly Cookie 保存 PKCE 校验信息，完成后只跳转到本站固定后台地址。
 
-   ```sql
-   insert into public.biodays_admins (user_id)
-   values ('Authentication → Users 中该用户的 UUID')
-   on conflict (user_id) do nothing;
-   ```
-
-5. 从 `/admin/login` 点击「使用 GitHub 账号登录」。回调使用 PKCE 验证，并只跳转到本站固定的后台页面；非管理员会退出当前会话。管理员仍需保护好 GitHub 账号，建议开启 Passkey 或两步验证。
-
-GitHub Provider 和两级回调地址的配置见 [Supabase GitHub 登录文档](https://supabase.com/docs/guides/auth/social-sign-in/auth-github)。本地测试验证回调拒绝、来源校验和管理员权限，真实 GitHub 授权流程需要配置好 Provider 后在线验收。Vercel Production 与 Preview 的 Supabase 变量分别配置；Preview 应使用独立测试项目。
+配置依据见 [Supabase GitHub 登录](https://supabase.com/docs/guides/auth/social-sign-in/auth-github)和[Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls)。本地测试验证白名单允许与拒绝、元数据伪造拒绝、旧密码接口关闭、回调错误和来源校验；真实 GitHub 授权仍需在线验收。`test:admin:create` 只为隔离的本地 Supabase 创建测试身份，拒绝连接线上项目。
 
 ## Jev 与可疑反馈复核
 

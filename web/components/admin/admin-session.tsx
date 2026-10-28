@@ -5,17 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { Window } from "@/components/win/window";
-import {
-  type AdminSession,
-  login as apiLogin,
-  logout as apiLogout,
-  FeedbackApiError,
-  me,
-} from "@/lib/admin-api";
+import { type AdminSession, logout as apiLogout, FeedbackApiError, me } from "@/lib/admin-api";
 
 type AdminSessionContextValue = {
   session: AdminSession | null;
-  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -58,7 +51,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
           return;
         }
         if (reason instanceof FeedbackApiError && reason.status === 503) {
-          setError("反馈功能尚未启用。");
+          setError(reason.message);
           return;
         }
         setError("无法验证管理员会话，请检查服务状态后重试。");
@@ -71,22 +64,13 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
     };
   }, [isLoginPage, router]);
 
-  const login = useCallback(
-    async (username: string, password: string) => {
-      const value = await apiLogin(username, password);
-      setSession(value);
-      router.replace("/admin/feedback");
-    },
-    [router],
-  );
-
   const logout = useCallback(async () => {
     await apiLogout();
     setSession(null);
     router.replace("/admin/login");
   }, [router]);
 
-  const value = useMemo(() => ({ session, login, logout }), [session, login, logout]);
+  const value = useMemo(() => ({ session, logout }), [session, logout]);
 
   if (!isLoginPage && loading) {
     return (

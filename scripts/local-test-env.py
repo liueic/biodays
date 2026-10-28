@@ -22,7 +22,7 @@ env = {
     "BIODAYS_CRON_SECRET": "local-test-cron-secret",
     "RESEND_WEBHOOK_SECRET": "whsec_" + base64.b64encode(b"local-webhook-secret-32-bytes-0000").decode(),
     "BIODAYS_ADMIN_EMAIL": "admin@biodays.test",
-    "BIODAYS_ADMIN_PASSWORD": "LocalTestPassword12345!",
+    "BIODAYS_ADMIN_GITHUB_IDS": "999000001",
 }
 if "--github" in sys.argv:
     with open(os.environ["GITHUB_ENV"], "a") as file:

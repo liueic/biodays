@@ -65,5 +65,6 @@ test("public API validation and isolated service failures", async ({ request, pa
   await page.goto("/");
   await expect(page.locator("main").last()).toBeVisible();
   await page.goto("/admin/login");
-  await expect(page.getByLabel("邮箱", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "使用 GitHub 账号登录" })).toBeVisible();
+  await expect(page.getByRole("textbox")).toHaveCount(0);
 });

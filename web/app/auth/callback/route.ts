@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { admin, authClient } from "@/lib/backend/auth";
+import { admin, authClient, authOrigin } from "@/lib/backend/auth";
 import { HttpError } from "@/lib/backend/db";
 
 export const runtime = "nodejs";
@@ -7,7 +7,15 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = new URL(process.env.BIODAYS_SITE_URL || request.url).origin;
+  let origin: string;
+  try {
+    origin = authOrigin(request);
+  } catch {
+    return new NextResponse("管理员登录地址尚未正确配置。", {
+      status: 503,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
   const redirect = (path: string) =>
     NextResponse.redirect(new URL(path, origin), {
       status: 303,

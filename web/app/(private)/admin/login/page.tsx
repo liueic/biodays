@@ -1,5 +1,7 @@
 import { Addrbook } from "@react95/icons/Addrbook";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/admin/login-form";
 import { Window } from "@/components/win/window";
@@ -14,9 +16,19 @@ export default async function AdminLoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
+  if (process.env.VERCEL_ENV === "production" && process.env.BIODAYS_SITE_URL) {
+    const canonical = new URL("/admin/login", process.env.BIODAYS_SITE_URL);
+    const incoming = await headers();
+    const host = incoming.get("x-forwarded-host") ?? incoming.get("host");
+    if (host !== canonical.host) {
+      if (["not_admin", "auth_unavailable", "github_failed"].includes(error ?? ""))
+        canonical.searchParams.set("error", error ?? "");
+      redirect(canonical.toString());
+    }
+  }
   const initialError =
     error === "not_admin"
-      ? "此账号没有管理员权限，请使用已获授权的账号。"
+      ? "此 GitHub 账号不在管理员白名单中，请使用已获授权的账号。"
       : error === "auth_unavailable"
         ? "管理员认证暂不可用，请稍后重试。"
         : error === "github_failed"

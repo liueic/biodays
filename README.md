@@ -5,8 +5,8 @@
 - Next.js 16 / React 19，保留 Win98 界面、原文章 ID、链接、随机阅读与已读 Cookie。
 - 首次访问按系统选择外观：Mac 使用经典 Mac OS 8/9 Platinum，Windows 及其他系统使用 Win98。两套桌面均有切换图标，任务栏或顶部菜单也可切换；手动偏好以 `biodays.os` Cookie 保存一年，优先于系统识别。主题复用参考项目的 Mac 前端、React95 控件与 Neodrag 拖拽，页面内容和业务服务共用，切换保留未提交表单与筛选状态。
 - 内容保存在 `web/content/stories/`，Git 提交触发 Vercel 发布。
-- 实验室手册入口为 `/lab`，下设技术解读（`/lab/methods`）、实验 Protocol（`/lab/protocols`）和实验室技巧（`/lab/tips`）。首页随机展示一张栏目导览，点击「下一条」优先展示本轮尚未浏览的栏目，浏览完三个栏目后开始新一轮，切换时不连续重复。文章保存在 `web/content/lab/`，构建时由 `bun scripts/lab-content.mjs` 进行元数据校验与预渲染；栏目定义集中在 `web/lib/lab.ts`。
-- Supabase PostgreSQL 保存反馈、订阅、邮件任务、运行配置和审计；Supabase Auth 管理邮箱登录，关闭公开注册。
+- 实验室手册入口为 `/lab`，下设技术解读（`/lab/methods`）、实验 Protocol（`/lab/protocols`）和实验室技巧（`/lab/tips`）。首页通过桌面图标或系统菜单进入手册；桌面端使用单屏工作区，长文在窗口内部滚动，中小屏保留单窗口自然阅读。文章保存在 `web/content/lab/`，构建时由 `bun scripts/lab-content.mjs` 进行元数据校验与预渲染；栏目定义集中在 `web/lib/lab.ts`。
+- Supabase PostgreSQL 保存反馈、订阅、邮件任务、运行配置和审计；管理员使用 Supabase Auth 的 GitHub 登录，按固定 GitHub ID 白名单授权。
 - Resend 官方 SDK 发送邮件，Supabase Cron 调度队列，webhook 验签更新投递情况。
 
 ## 本地运行
@@ -30,7 +30,7 @@ supabase start -x realtime,storage-api,imgproxy,postgres-meta,studio,edge-runtim
 
 将本地 Supabase 的 URL、anon/publishable key、service_role/secret key 配置到 `web/.env.local`。不要提交密钥；`SUPABASE_SECRET_KEY` 仅在服务端使用。
 
-管理员认证使用 Supabase Auth，支持 GitHub 登录和邮箱密码登录。按[部署文档](docs/deployment.md#github-管理员登录)配置 GitHub Provider 与回调后，在 `web/.env.local` 设置 `BIODAYS_ADMIN_EMAIL`，进入 `web/` 运行 `proto run bun -- run admin:create`，可创建不设密码的 GitHub 管理员账号。若需要密码登录，再临时设置至少 12 位的 `BIODAYS_ADMIN_PASSWORD`，创建后删除密码配置。脚本预先确认邮箱并加入管理员成员表；普通 Supabase 用户没有管理权限。已有账号可在 SQL editor 中把用户 UUID 加入 `biodays_admins`。
+管理员只使用 GitHub 登录，服务器每次请求都通过 Supabase Auth 验证身份，再按 `BIODAYS_ADMIN_GITHUB_IDS` 中的固定 GitHub 用户 ID 检查白名单。生产仅允许 `liueic`（`69223323`），站点为 `https://www.oneleaf.me`。按[部署文档](docs/deployment.md#github-管理员登录)配置 Provider、两级回调地址和白名单即可，不需要创建网站账号或密码，也不需要向 `biodays_admins` 手动加人。
 
 ## 编辑故事
 
@@ -56,7 +56,7 @@ make build
 cd web && bunx playwright install chromium && bun run test:e2e
 ```
 
-未配置本地 Supabase 时，完整互动和队列集成测试会明确跳过。运行全部检查：启动上述本地 Supabase，执行 `python3 scripts/local-test-env.py --write`；然后在 `web/` 用 `bun --env-file=.env.test.local run admin:create`、`bun --env-file=.env.test.local run test`、`bun --env-file=.env.test.local run test:e2e`。该文件仅含本地项目测试凭据并被 Git 忽略。集成测试会清理专用本地项目的数据，禁止用于生产数据库。
+未配置本地 Supabase 时，完整互动和队列集成测试会明确跳过。运行全部检查：启动上述本地 Supabase，执行 `python3 scripts/local-test-env.py --write`；然后在 `web/` 用 `proto exec --tools-from-config -- bun --env-file=.env.test.local run test:admin:create`、`bun --env-file=.env.test.local run test`、`bun --env-file=.env.test.local run test:e2e`。该文件仅含本地项目测试凭据并被 Git 忽略。集成测试会清理专用本地项目的数据，禁止用于生产数据库。
 
 CI 自动创建隔离的 Supabase，执行真实认证和数据库测试、Resend SDK 模拟网络测试、生产构建，以及桌面/移动端浏览器回归。数据库凭据不参与构建。生产 Resend 邮件与线上 Cron 仍需部署后按文档验收。
 
