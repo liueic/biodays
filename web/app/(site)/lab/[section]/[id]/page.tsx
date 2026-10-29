@@ -122,6 +122,19 @@ export default async function LabArticlePage({ params }: PageProps) {
             )}
           </Fieldset>
 
+          <Fieldset legend="纠错 / 补充线索" className="mt-6">
+            <p>
+              发现原理、步骤或引文有误？
+              <Link
+                className="text-link"
+                href={`/feedback?kind=issue&story_id=${encodeURIComponent(article.id)}`}
+              >
+                提交反馈
+              </Link>
+              ，无需注册。
+            </p>
+          </Fieldset>
+
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <Button as={Link} href={`/lab/${section.id}`} className="px-4">
               返回 {section.title} 栏目

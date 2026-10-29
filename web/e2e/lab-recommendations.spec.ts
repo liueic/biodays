@@ -13,7 +13,6 @@ for (const theme of ["win", "mac"] as const) {
       await page.getByRole("button", { name: "切换到 Mac", exact: true }).click();
     }
     const window = page.locator(".home-main-window .os-window");
-    const storyTitle = await window.getByRole("heading", { level: 1 }).textContent();
     const recommendations = window.getByRole("region", { name: "实验室灵感", exact: true });
     const cards = recommendations.locator(".daily-lab-grid a");
     await expect(cards).toHaveCount(2);
@@ -28,6 +27,8 @@ for (const theme of ["win", "mac"] as const) {
       await cards.evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
     ).toEqual(initial);
 
+    // Reloading may choose a new fallback story on dates without a scheduled entry.
+    const storyTitle = await window.getByRole("heading", { level: 1 }).textContent();
     await recommendations.getByRole("button", { name: "换一组", exact: true }).click();
     const rotated = await cards.evaluateAll((links) =>
       links.map((link) => link.getAttribute("href")),

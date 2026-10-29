@@ -601,7 +601,7 @@ export function FeedbackForm() {
         <div className="mail-compose-options-content">
           {storyID && (
             <div className="mail-compose-story">
-              关联故事：<span className="font-mono">{storyID}</span>
+              关联文章：<span className="font-mono">{storyID}</span>
             </div>
           )}
 

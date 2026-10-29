@@ -1,4 +1,5 @@
 import { FeedbackApiError } from "@/lib/feedback-api";
+import type { FeedbackArticle } from "@/lib/feedback-article";
 
 export { FeedbackApiError };
 
@@ -64,6 +65,7 @@ export type FeedbackDetail = {
   content: string;
   source_url: string;
   story_id: string;
+  related_article?: FeedbackArticle;
   nickname: string;
   email: string;
   email_verified: boolean;

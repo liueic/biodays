@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FeedbackDetail } from "@/lib/admin-api";
-import { stories } from "@/lib/content";
 import type { SubmitFeedbackInput } from "@/lib/feedback-api";
+import { feedbackArticle } from "@/lib/feedback-article";
 import { KIND_LABELS, STATUS_LABELS } from "@/lib/feedback-labels";
 import { clientIP, hash, rateLimit, spamDecision, verifyTurnstile } from "./abuse";
 import { check, db, HttpError, newID, rpc } from "./db";
@@ -43,7 +43,7 @@ export function normalizeSubmission(raw: Record<string, unknown>): SubmitFeedbac
       fields.source_url = "请填写 HTTP(S) 链接。";
     }
   }
-  if (story_id && !stories.some((s) => s.id === story_id)) fields.story_id = "关联故事不存在。";
+  if (story_id && !feedbackArticle(story_id)) fields.story_id = "关联文章不存在。";
   const website = string("website", 0, 1000),
     turnstile_token = string("turnstile_token", 0, 4096);
   if (Object.keys(fields).length)
@@ -89,6 +89,12 @@ const receipt = (f: Record<string, unknown>) => ({
   confirmation_email: f.confirmation_email,
   created_at: f.created_at,
 });
+function articleMailContext(id: string | undefined) {
+  if (!id) return "";
+  const article = feedbackArticle(id);
+  if (!article) return `\n\n关联文章：${id}（暂不可用）`;
+  return `\n\n关联文章：${article.title}（${article.id}）\n摘要：${article.summary}\n阅读全文：${siteURL()}${article.path}`;
+}
 async function allowConfirmation(email: string, s: Settings) {
   if (
     !(await rateLimit(
@@ -184,7 +190,7 @@ export async function submit(raw: Record<string, unknown>, request: Request, s: 
         `new:${f.id}`,
         notifyTo,
         `Biodays 新反馈：${f.title}`,
-        `${KIND_LABELS[f.kind]}\n${f.title}\n\n${f.content}\n\n来源：${f.source_url || "无"}\n关联故事：${f.story_id || "无"}\n${siteURL()}/admin/feedback/${f.id}`,
+        `${KIND_LABELS[f.kind]}\n${f.title}\n\n${f.content}\n\n来源：${f.source_url || "无"}${articleMailContext(f.story_id)}\n\n处理反馈：${siteURL()}/admin/feedback/${f.id}`,
         f.id,
       ),
     );
@@ -220,6 +226,7 @@ export async function getFeedback(id: string): Promise<FeedbackDetail> {
   } = f.data;
   return {
     ...data,
+    related_article: feedbackArticle(data.story_id),
     email_verified: !!data.confirmed_at,
     events: events.data ?? [],
     mail: (mail.data ?? []).map(safeTask),
@@ -258,7 +265,7 @@ export async function updateFeedback(id: string, raw: Record<string, unknown>, a
         `status:${id}:${Number(raw.version) + 1}`,
         before.email,
         `Biodays 反馈处理结果：${before.title}`,
-        `你的反馈「${before.title}」状态已更新为：${STATUS_LABELS[patch.status]}。\n\n${patch.public_reply ?? before.public_reply}\n\n退订通知：${unsub.link}`,
+        `你的反馈「${before.title}」状态已更新为：${STATUS_LABELS[patch.status]}。\n\n${patch.public_reply ?? before.public_reply}${articleMailContext(before.story_id)}\n\n退订通知：${unsub.link}`,
         id,
       ),
     );

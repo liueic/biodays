@@ -242,12 +242,14 @@ export function FeedbackDetailView({ id }: { id: string }) {
             )}
             {detail.story_id && (
               <p className="text-[12px]">
-                关联故事：
+                关联文章：
                 <Link
-                  className="text-link font-mono"
-                  href={`/story/${encodeURIComponent(detail.story_id)}`}
+                  className="text-link"
+                  href={
+                    detail.related_article?.path ?? `/story/${encodeURIComponent(detail.story_id)}`
+                  }
                 >
-                  {detail.story_id}
+                  {detail.related_article?.title ?? detail.story_id}
                 </Link>
               </p>
             )}
